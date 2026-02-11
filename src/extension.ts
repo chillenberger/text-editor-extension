@@ -1,0 +1,65 @@
+import * as vscode from 'vscode';
+import { CoDocView } from './panels/CoDocPanel.js';
+import { ToolExecutor } from './services/toolExecutor.js';
+import { PlanningService } from './services/planningService.js';
+import { UserState } from './type.js';
+
+export function activate(context: vscode.ExtensionContext) {
+	const extensionManager = new ExtensionManager(context);
+
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(CoDocView.viewType, extensionManager.getProvider())
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('co-doc.refresh', () => {
+			extensionManager.clearUserState();
+			vscode.window.showInformationMessage('CoDoc user state cleared.');
+		})
+	);
+}
+
+export function deactivate() {}
+
+class ExtensionManager {
+	private provider: CoDocView;
+	private stateManager: StateManager;
+
+	constructor(context: vscode.ExtensionContext) {
+		const toolExecutor = new ToolExecutor();
+		const planningService = new PlanningService(toolExecutor);
+		
+		this.stateManager = new StateManager(context);
+		const userState = this.stateManager.getUserState();
+		
+		this.provider = new CoDocView(context.extensionUri, planningService, userState, this.stateManager.setUserState.bind(this.stateManager));
+		const webviewMessenger = this.provider.sendMessage.bind(this.provider);
+
+		planningService.setWebviewMessenger(webviewMessenger);
+	}
+
+	public clearUserState() {
+		this.stateManager.clearUserState();
+		this.provider.resetConversation();
+	}
+
+	public getProvider(): CoDocView {
+		return this.provider;
+	}
+}
+
+class StateManager {
+	constructor(private context: vscode.ExtensionContext) {}
+
+	public setUserState(newState: UserState) {
+		this.context.globalState.update("coDocUserState", newState);
+	}
+
+	public getUserState(): UserState {
+		return this.context.globalState.get("coDocUserState") || {initialized: true, messageHistory: []};
+	}
+
+	public clearUserState() {
+		this.context.globalState.update("coDocUserState", undefined);
+	}
+}
