@@ -27,7 +27,6 @@ interface InvokePlan {
 interface ExecutePlanningLoop {
   messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
   newMessage: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
-  specialInstructions?: string;
 }
 
 export class PlanningService {
@@ -65,7 +64,7 @@ export class PlanningService {
     }
   }
 
-  async executePlanningLoop({messages, newMessage, specialInstructions}: ExecutePlanningLoop): Promise<Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>> {
+  async executePlanningLoop({messages, newMessage}: ExecutePlanningLoop): Promise<Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>> {
     let iterations = 0;
     const maxIterations = 10;
 
