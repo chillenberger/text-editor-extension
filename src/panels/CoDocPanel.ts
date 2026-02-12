@@ -16,7 +16,8 @@ import {
   ToolCallMessage,
   ToolResultMessage,
   AssistantMessage, 
-  UserState
+  UserState,
+  SpecialInstruction
 } from "../type.js";
 import { PlanningService } from "../services/planningService.js";
 
@@ -28,15 +29,28 @@ export class CoDocView implements WebviewViewProvider {
   private planningService: PlanningService;
   private threadId: string;
   private _conversationHistory: Array<HumanMessage | ToolCallMessage | ToolResultMessage | AssistantMessage>;
+  private _specialInstructions: SpecialInstruction[];
+  private _activeSpecialInstructionId: string | null;
 
-  constructor(private readonly _extensionUri: Uri, planningService: PlanningService, userState: UserState, private setUserState: (newState: UserState) => void) {
+  constructor(
+    private readonly _extensionUri: Uri,
+    planningService: PlanningService,
+    userState: UserState,
+    private setUserState: (newState: UserState) => void
+  ) {
     this.planningService = planningService;
     this.threadId = this._generateThreadId();
     this._conversationHistory = userState.messageHistory ? [...userState.messageHistory] : [];
+    this._specialInstructions = userState.specialInstructions ? [...userState.specialInstructions] : [];
+    this._activeSpecialInstructionId = userState.activeSpecialInstructionId ?? null;
   }
 
   private _generateThreadId(): string {
     return `thread_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
+  private _generateInstructionId(): string {
+    return `si_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
 
   public resolveWebviewView(
@@ -102,16 +116,53 @@ export class CoDocView implements WebviewViewProvider {
         try {
           switch (message.command) {
             case "ready":
-              this.sendMessage({ type: "initialize", data: { messages: [...this._conversationHistory] } });
+              this.sendMessage({
+                type: "initialize",
+                data: {
+                  messages: [...this._conversationHistory],
+                  specialInstructions: [...this._specialInstructions],
+                  activeSpecialInstructionId: this._activeSpecialInstructionId
+                }
+              });
               break;
+
             case "chatMessage":
               if (message.text) {
                 await this._handleChatMessage(message.text);
               }
               break;
+
+            case "createSpecialInstruction":
+              if (message.data?.title !== undefined && message.data?.content !== undefined) {
+                this._createSpecialInstruction(message.data.title, message.data.content);
+              }
+              break;
+
+            case "updateSpecialInstruction":
+              if (message.data?.id) {
+                this._updateSpecialInstruction(
+                  message.data.id,
+                  message.data.title,
+                  message.data.content
+                );
+              }
+              break;
+
+            case "deleteSpecialInstruction":
+              if (message.data?.id) {
+                this._deleteSpecialInstruction(message.data.id);
+              }
+              break;
+
+            case "setActiveSpecialInstruction":
+              // data.id can be undefined/null to deactivate
+              this._setActiveSpecialInstruction(message.data?.id ?? null);
+              break;
+
             case "refresh":
               this.resetConversation();
               break;
+
             default:
               this.sendMessage({
                 type: "error",
@@ -129,6 +180,100 @@ export class CoDocView implements WebviewViewProvider {
     );
   }
 
+  // --- Special Instructions CRUD ---
+
+  private _createSpecialInstruction(title: string, content: string) {
+    const newInstruction: SpecialInstruction = {
+      id: this._generateInstructionId(),
+      title: title.trim() || "Untitled",
+      content,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    this._specialInstructions.push(newInstruction);
+    this._activeSpecialInstructionId = newInstruction.id;
+    this._persistState();
+    this._broadcastSpecialInstructions();
+  }
+
+  private _updateSpecialInstruction(id: string, title?: string, content?: string) {
+    const instruction = this._specialInstructions.find(i => i.id === id);
+    if (!instruction) {
+      this.sendMessage({ type: "error", data: { text: "Instruction not found." } });
+      return;
+    }
+
+    if (title !== undefined) {
+      instruction.title = title.trim() || "Untitled";
+    }
+    if (content !== undefined) {
+      instruction.content = content;
+    }
+    instruction.updatedAt = Date.now();
+
+    this._persistState();
+    this._broadcastSpecialInstructions();
+  }
+
+  private _deleteSpecialInstruction(id: string) {
+    this._specialInstructions = this._specialInstructions.filter(i => i.id !== id);
+
+    if (this._activeSpecialInstructionId === id) {
+      this._activeSpecialInstructionId = null;
+    }
+
+    this._persistState();
+    this._broadcastSpecialInstructions();
+  }
+
+  private _setActiveSpecialInstruction(id: string | null) {
+    if (id !== null) {
+      const exists = this._specialInstructions.some(i => i.id === id);
+      if (!exists) {
+        this.sendMessage({ type: "error", data: { text: "Instruction not found." } });
+        return;
+      }
+    }
+
+    this._activeSpecialInstructionId = id;
+    this._persistState();
+    this._broadcastSpecialInstructions();
+  }
+
+  private _getActiveInstructionContent(): string | undefined {
+    if (!this._activeSpecialInstructionId) {
+      return undefined;
+    }
+    const active = this._specialInstructions.find(
+      i => i.id === this._activeSpecialInstructionId
+    );
+    return active?.content;
+  }
+
+  private _broadcastSpecialInstructions() {
+    this.sendMessage({
+      type: "specialInstructionsUpdated",
+      data: {
+        specialInstructions: [...this._specialInstructions],
+        activeSpecialInstructionId: this._activeSpecialInstructionId
+      }
+    });
+  }
+
+  // --- State persistence ---
+
+  private _persistState() {
+    this.setUserState({
+      initialized: true,
+      messageHistory: this._conversationHistory,
+      specialInstructions: this._specialInstructions,
+      activeSpecialInstructionId: this._activeSpecialInstructionId
+    });
+  }
+
+  // --- Chat handling ---
+
   private async _handleChatMessage(instruction: string) {
     try {
       const messages = [...this._conversationHistory];
@@ -136,8 +281,14 @@ export class CoDocView implements WebviewViewProvider {
       this._conversationHistory.push(newMessage);
       this.sendMessage({ type: "message", data: { messages: [newMessage] } });
 
+      const specialInstructions = this._getActiveInstructionContent();
 
-      const responses = await this.planningService.executePlanningLoop({messages: messages, newMessage: newMessage});
+      const responses = await this.planningService.executePlanningLoop({
+        messages,
+        newMessage,
+        specialInstructions
+      });
+
       if (!responses || responses.length === 0) {
         this.sendMessage({ type: "error", data: { text: "No response from planning service." } });
         return;
@@ -149,11 +300,8 @@ export class CoDocView implements WebviewViewProvider {
           this.sendMessage({ type: "message", data: { messages: [msg] } });
         }
       }
-      
-      this.setUserState({
-        initialized: true,
-        messageHistory: this._conversationHistory
-      });
+
+      this._persistState();
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Unknown error";
@@ -164,6 +312,7 @@ export class CoDocView implements WebviewViewProvider {
   resetConversation() {
     this.sendMessage({ type: "clearState", data: { text: "" } });
     this._conversationHistory = [];
+    this._persistState();
   }
 
   public sendMessage(message: MessageEvent) {
@@ -176,4 +325,3 @@ export class CoDocView implements WebviewViewProvider {
     this._disposables.forEach((d) => d.dispose());
   }
 }
-

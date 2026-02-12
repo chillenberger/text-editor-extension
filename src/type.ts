@@ -1,12 +1,25 @@
 export interface UserState {
   initialized: boolean;
   messageHistory?: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+  specialInstructions?: SpecialInstruction[];
+  activeSpecialInstructionId?: string | null;
 }
 
 export interface VsCodeMessage {
-  command: string;
+    command: 
+    | "ready" 
+    | "chatMessage" 
+    | "refresh" 
+    | "createSpecialInstruction" 
+    | "updateSpecialInstruction" 
+    | "deleteSpecialInstruction" 
+    | "setActiveSpecialInstruction";
   text?: string;
-  data?: any;
+  data?: {
+    id?: string;
+    title?: string;
+    content?: string;
+  };
 }
 
 export type RequestModes = "plan" | "execute" | "auto";
@@ -17,6 +30,7 @@ export interface PlanningRequest {
     messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
     new_message: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
     mode: RequestModes;
+    special_instructions?: string;
   };
 }
 
@@ -32,6 +46,13 @@ export interface ToolCall {
   arguments: Record<string, any>;
 }
 
+export interface SpecialInstruction {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 /* 
   Message: human or assistant conversation,
@@ -42,10 +63,20 @@ export interface ToolCall {
   Tool_call: Message to indicate a tool is being called with arguments, used to update UI with current tool calls.
 */
 export interface MessageEvent {
-  type: "message" | "error" | "working" | "clearState" | "initialize" | "tool_call";
+  type: 
+    "message" 
+    | "error" 
+    | "working" 
+    | "clearState" 
+    | "initialize" 
+    | "tool_call" 
+    | "tool_use" 
+    | "specialInstructionsUpdated";
   data: {
     messages?: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
     text?: string;
+    specialInstructions?: SpecialInstruction[];
+    activeSpecialInstructionId?: string | null;
   };
 }
 
