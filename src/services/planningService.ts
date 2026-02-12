@@ -34,12 +34,13 @@ export class PlanningService {
   private webviewMessenger: (message: MessageEvent) => void = () => {};
   constructor(private toolExecutor: ToolExecutor) {}
 
-  async invokePlan({messages, newMessage, mode}: InvokePlan): Promise<PlanningResponse> {
+  async invokePlan({messages, newMessage, mode, specialInstructions}: InvokePlan & { specialInstructions?: string }): Promise<PlanningResponse> {
     const body: PlanningRequest = {
       input: {
         messages: messages,
         new_message: newMessage,
-        mode: mode
+        mode: mode,
+        special_instructions: specialInstructions,
       },
     };
     
@@ -76,7 +77,7 @@ export class PlanningService {
 
         // Only one planning cycle then only execute. 
         const requestMode = !responseMode ? "auto" : "execute";
-        const parsedResponse: PlanningResponse = await this.invokePlan({messages, newMessage, mode: requestMode});
+        const parsedResponse: PlanningResponse = await this.invokePlan({messages, newMessage, mode: requestMode, specialInstructions});
         const output: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage = parsedResponse.output.message;
         responseMode = parsedResponse.output.mode;
         messages.push(...[newMessage, output]);

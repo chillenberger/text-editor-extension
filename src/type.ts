@@ -30,6 +30,7 @@ export interface PlanningRequest {
     messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
     new_message: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
     mode: RequestModes;
+    special_instructions?: string;
   };
 }
 
