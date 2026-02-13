@@ -10,47 +10,27 @@ import {
 import { getNonce, getUri } from "../utilities.js";
 import { 
   VsCodeMessage, 
-  MessageEvent, 
-  humanMessage, 
-  HumanMessage, 
-  ToolCallMessage,
-  ToolResultMessage,
-  AssistantMessage, 
+  MessageEvent,
   UserState,
-  SpecialInstruction
 } from "../type.js";
-import { PlanningService } from "../services/planningService.js";
+import { SpecialInstructionsHandler } from "../handlers/specialInstructionsHandler.js";
+import { ChatHandler } from "../handlers/chatHandler.js";
 
 export class CoDocView implements WebviewViewProvider {
   public static readonly viewType = "codocView";
 
   private _view?: WebviewView;
   private _disposables: Disposable[] = [];
-  private planningService: PlanningService;
-  private threadId: string;
-  private _conversationHistory: Array<HumanMessage | ToolCallMessage | ToolResultMessage | AssistantMessage>;
-  private _specialInstructions: SpecialInstruction[];
-  private _activeSpecialInstructionId: string | null;
+  private _specialInstructionsHandler: SpecialInstructionsHandler;
+  private chatHandler: ChatHandler;
 
   constructor(
     private readonly _extensionUri: Uri,
-    planningService: PlanningService,
     userState: UserState,
-    private setUserState: (newState: UserState) => void
+    private _setUserState: (newState: UserState) => void
   ) {
-    this.planningService = planningService;
-    this.threadId = this._generateThreadId();
-    this._conversationHistory = userState.messageHistory ? [...userState.messageHistory] : [];
-    this._specialInstructions = userState.specialInstructions ? [...userState.specialInstructions] : [];
-    this._activeSpecialInstructionId = userState.activeSpecialInstructionId ?? null;
-  }
-
-  private _generateThreadId(): string {
-    return `thread_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  }
-
-  private _generateInstructionId(): string {
-    return `si_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    this._specialInstructionsHandler = new SpecialInstructionsHandler(userState, this._setUserState, this.sendMessage.bind(this));
+    this.chatHandler = new ChatHandler(userState, this._setUserState, this.sendMessage.bind(this));
   }
 
   public resolveWebviewView(
@@ -116,31 +96,32 @@ export class CoDocView implements WebviewViewProvider {
         try {
           switch (message.command) {
             case "ready":
+              const test = this._specialInstructionsHandler.getSpecialInstructions();
               this.sendMessage({
                 type: "initialize",
                 data: {
-                  messages: [...this._conversationHistory],
-                  specialInstructions: [...this._specialInstructions],
-                  activeSpecialInstructionId: this._activeSpecialInstructionId
+                  messages: [...this.chatHandler.getChatHistory()],
+                  specialInstructions: [...this._specialInstructionsHandler.getSpecialInstructions()],
+                  activeSpecialInstructionId: this._specialInstructionsHandler.getActiveSpecialInstructionId()
                 }
               });
               break;
 
             case "chatMessage":
               if (message.text) {
-                await this._handleChatMessage(message.text);
+                await this.chatHandler.handleChatMessage(message.text, this._specialInstructionsHandler.getActiveInstructionContent());
               }
               break;
 
             case "createSpecialInstruction":
               if (message.data?.title !== undefined && message.data?.content !== undefined) {
-                this._createSpecialInstruction(message.data.title, message.data.content);
+                this._specialInstructionsHandler.createSpecialInstruction(message.data.title, message.data.content);
               }
               break;
 
             case "updateSpecialInstruction":
               if (message.data?.id) {
-                this._updateSpecialInstruction(
+                this._specialInstructionsHandler.updateSpecialInstruction(
                   message.data.id,
                   message.data.title,
                   message.data.content
@@ -150,17 +131,17 @@ export class CoDocView implements WebviewViewProvider {
 
             case "deleteSpecialInstruction":
               if (message.data?.id) {
-                this._deleteSpecialInstruction(message.data.id);
+                this._specialInstructionsHandler.deleteSpecialInstruction(message.data.id);
               }
               break;
 
             case "setActiveSpecialInstruction":
               // data.id can be undefined/null to deactivate
-              this._setActiveSpecialInstruction(message.data?.id ?? null);
+              this._specialInstructionsHandler.setActiveSpecialInstruction(message.data?.id ?? null);
               break;
 
             case "refresh":
-              this.resetConversation();
+              this.chatHandler.resetConversation();
               break;
 
             default:
@@ -180,139 +161,8 @@ export class CoDocView implements WebviewViewProvider {
     );
   }
 
-  // --- Special Instructions CRUD ---
-
-  private _createSpecialInstruction(title: string, content: string) {
-    const newInstruction: SpecialInstruction = {
-      id: this._generateInstructionId(),
-      title: title.trim() || "Untitled",
-      content,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    this._specialInstructions.push(newInstruction);
-    this._activeSpecialInstructionId = newInstruction.id;
-    this._persistState();
-    this._broadcastSpecialInstructions();
-  }
-
-  private _updateSpecialInstruction(id: string, title?: string, content?: string) {
-    const instruction = this._specialInstructions.find(i => i.id === id);
-    if (!instruction) {
-      this.sendMessage({ type: "error", data: { text: "Instruction not found." } });
-      return;
-    }
-
-    if (title !== undefined) {
-      instruction.title = title.trim() || "Untitled";
-    }
-    if (content !== undefined) {
-      instruction.content = content;
-    }
-    instruction.updatedAt = Date.now();
-
-    this._persistState();
-    this._broadcastSpecialInstructions();
-  }
-
-  private _deleteSpecialInstruction(id: string) {
-    this._specialInstructions = this._specialInstructions.filter(i => i.id !== id);
-
-    if (this._activeSpecialInstructionId === id) {
-      this._activeSpecialInstructionId = null;
-    }
-
-    this._persistState();
-    this._broadcastSpecialInstructions();
-  }
-
-  private _setActiveSpecialInstruction(id: string | null) {
-    if (id !== null) {
-      const exists = this._specialInstructions.some(i => i.id === id);
-      if (!exists) {
-        this.sendMessage({ type: "error", data: { text: "Instruction not found." } });
-        return;
-      }
-    }
-
-    this._activeSpecialInstructionId = id;
-    this._persistState();
-    this._broadcastSpecialInstructions();
-  }
-
-  private _getActiveInstructionContent(): string | undefined {
-    if (!this._activeSpecialInstructionId) {
-      return undefined;
-    }
-    const active = this._specialInstructions.find(
-      i => i.id === this._activeSpecialInstructionId
-    );
-    return active?.content;
-  }
-
-  private _broadcastSpecialInstructions() {
-    this.sendMessage({
-      type: "specialInstructionsUpdated",
-      data: {
-        specialInstructions: [...this._specialInstructions],
-        activeSpecialInstructionId: this._activeSpecialInstructionId
-      }
-    });
-  }
-
-  // --- State persistence ---
-
-  private _persistState() {
-    this.setUserState({
-      initialized: true,
-      messageHistory: this._conversationHistory,
-      specialInstructions: this._specialInstructions,
-      activeSpecialInstructionId: this._activeSpecialInstructionId
-    });
-  }
-
-  // --- Chat handling ---
-
-  private async _handleChatMessage(instruction: string) {
-    try {
-      const messages = [...this._conversationHistory];
-      const newMessage = humanMessage(instruction);
-      this._conversationHistory.push(newMessage);
-      this.sendMessage({ type: "message", data: { messages: [newMessage] } });
-
-      const specialInstructions = this._getActiveInstructionContent();
-
-      const responses = await this.planningService.executePlanningLoop({
-        messages,
-        newMessage,
-        specialInstructions
-      });
-
-      if (!responses || responses.length === 0) {
-        this.sendMessage({ type: "error", data: { text: "No response from planning service." } });
-        return;
-      }
-
-      for (const msg of responses) {
-        this._conversationHistory.push(msg);
-        if (msg.type === "assistant") {
-          this.sendMessage({ type: "message", data: { messages: [msg] } });
-        }
-      }
-
-      this._persistState();
-    } catch (error) {
-      const errorText =
-        error instanceof Error ? error.message : "Unknown error";
-      this.sendMessage({ type: "error", data: { text: errorText } });
-    }
-  }
-
-  resetConversation() {
-    this.sendMessage({ type: "clearState", data: { text: "" } });
-    this._conversationHistory = [];
-    this._persistState();
+  public webViewReset() {
+    this.chatHandler.resetConversation();
   }
 
   public sendMessage(message: MessageEvent) {

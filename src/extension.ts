@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
-import { CoDocView } from './panels/CoDocPanel.js';
-import { ToolExecutor } from './services/toolExecutor.js';
-import { PlanningService } from './services/planningService.js';
-import { UserState } from './type.js';
+import { CoDocView } from './panels/CoDocPanel';
+import { UserState } from './type';
 
 export function activate(context: vscode.ExtensionContext) {
 	const extensionManager = new ExtensionManager(context);
@@ -26,21 +24,14 @@ class ExtensionManager {
 	private stateManager: StateManager;
 
 	constructor(context: vscode.ExtensionContext) {
-		const toolExecutor = new ToolExecutor();
-		const planningService = new PlanningService(toolExecutor);
-		
 		this.stateManager = new StateManager(context);
 		const userState = this.stateManager.getUserState();
-		
-		this.provider = new CoDocView(context.extensionUri, planningService, userState, this.stateManager.setUserState.bind(this.stateManager));
-		const webviewMessenger = this.provider.sendMessage.bind(this.provider);
-
-		planningService.setWebviewMessenger(webviewMessenger);
+		this.provider = new CoDocView(context.extensionUri, userState, this.stateManager.setUserState.bind(this.stateManager));
 	}
 
 	public clearUserState() {
 		this.stateManager.clearUserState();
-		this.provider.resetConversation();
+		this.provider.webViewReset();
 	}
 
 	public getProvider(): CoDocView {
