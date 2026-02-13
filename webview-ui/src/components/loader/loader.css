@@ -1,0 +1,13 @@
+.loader {
+  position: relative;
+}
+
+.loader span {
+  position: relative;
+}
+
+@keyframes wave {
+  0%, 60%, 100% { bottom: 0; }
+  20% { bottom: 4px; }
+  40% { bottom: -4px; }
+}

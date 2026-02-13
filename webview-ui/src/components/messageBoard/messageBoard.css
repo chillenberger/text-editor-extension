@@ -1,0 +1,18 @@
+#message-board {
+  padding: 16px;
+  flex-grow: 1;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.assistant-message {
+  background-color: #333333;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.human-message {
+  background-color: #005f73;
+  padding: 8px;
+  border-radius: 4px;
+}
