@@ -1,5 +1,8 @@
-import { Uri, Webview } from "vscode";
+import { Uri, Webview, window, TabInputCustom, TabInputNotebook, TabInputText, TabInputWebview } from "vscode";
 import type { WorkspaceFolder } from "vscode";
+import type { AbsolutePath, File, MessageEvent, RelativePath } from "./type";
+import { workspace } from "vscode";
+import * as path from 'path';
 
 /**
  * A helper function which will get the webview URI of a given file or resource.
@@ -58,3 +61,56 @@ export function resolveUri(path: string, workspaceFolders: readonly WorkspaceFol
     // Treat as workspace-relative path
     return Uri.joinPath(workspaceFolder.uri, path);
   }
+
+  export function uriToFile(uri: Uri): File {
+      return {
+          type: 'file',
+          name: path.basename(uri.fsPath),
+          relativePath: stripSystemPathFromUri(uri) as RelativePath,
+          fullPath: uri.fsPath as AbsolutePath,
+      };
+  }
+  
+  export function fileToMessage(file: File | null): MessageEvent {
+      return {
+        type: "activeTabUpdate",
+        data: {
+          activeTab: file,
+        }
+      }
+    }
+
+    /* 
+    * Strip common root of workspace folder. 
+    */
+    export function stripSystemPathFromUri(fileUri: Uri): string {
+      const workspaceFolder = workspace.getWorkspaceFolder(fileUri)?.uri.fsPath.split('/');
+      if (workspaceFolder) {
+        workspaceFolder.pop();
+        return fileUri.fsPath.substring(workspaceFolder.join("/").length + 1);
+      }
+      return fileUri.fsPath;
+    }
+
+export function getActiveTabUri(): Uri | null {
+    const activeTab = window.tabGroups.activeTabGroup?.activeTab;
+    if (!activeTab) return null;
+
+    const input = activeTab.input;
+
+    if (input instanceof TabInputText) {
+        // Normal text files (.js, .ts, .py, etc.)
+        return input.uri;
+    } else if (input instanceof TabInputCustom) {
+        // Custom editors (.pdf, .docx, images, etc.)
+        return input.uri;
+    } else if (input instanceof TabInputNotebook) {
+        // Notebook files (.ipynb)
+        return input.uri;
+    } else if (input instanceof TabInputWebview) {
+        // Webview panels (no file URI)
+        return null;
+    }
+
+    return null;
+}

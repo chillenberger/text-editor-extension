@@ -6,8 +6,9 @@ import {
   WebviewView,
   WebviewViewResolveContext,
   CancellationToken,
+  window,
 } from "vscode";
-import { getNonce, getUri } from "../utilities.js";
+import { getNonce, getUri, uriToFile, getActiveTabUri} from "../utilities.js";
 import { 
   VsCodeMessage, 
   MessageEvent,
@@ -21,16 +22,16 @@ export class CoDocView implements WebviewViewProvider {
 
   private _view?: WebviewView;
   private _disposables: Disposable[] = [];
+  private _chatHandler: ChatHandler;
   private _specialInstructionsHandler: SpecialInstructionsHandler;
-  private chatHandler: ChatHandler;
 
   constructor(
     private readonly _extensionUri: Uri,
     userState: UserState,
     private _setUserState: (newState: UserState) => void
   ) {
+    this._chatHandler = new ChatHandler(userState, this._setUserState, this.sendMessage.bind(this));
     this._specialInstructionsHandler = new SpecialInstructionsHandler(userState, this._setUserState, this.sendMessage.bind(this));
-    this.chatHandler = new ChatHandler(userState, this._setUserState, this.sendMessage.bind(this));
   }
 
   public resolveWebviewView(
@@ -96,20 +97,25 @@ export class CoDocView implements WebviewViewProvider {
         try {
           switch (message.command) {
             case "ready":
-              const test = this._specialInstructionsHandler.getSpecialInstructions();
+              const uri = getActiveTabUri();
               this.sendMessage({
                 type: "initialize",
                 data: {
-                  messages: [...this.chatHandler.getChatHistory()],
+                  messages: [...this._chatHandler.getChatHistory()],
                   specialInstructions: [...this._specialInstructionsHandler.getSpecialInstructions()],
-                  activeSpecialInstructionId: this._specialInstructionsHandler.getActiveSpecialInstructionId()
+                  activeSpecialInstructionId: this._specialInstructionsHandler.getActiveSpecialInstructionId(),
+                  activeTab: uri ? uriToFile(uri) : null,
                 }
               });
               break;
 
+            case "refresh":
+              this._chatHandler.resetConversation();
+              break;
+
             case "chatMessage":
               if (message.text) {
-                await this.chatHandler.handleChatMessage(message.text, this._specialInstructionsHandler.getActiveInstructionContent());
+                await this._chatHandler.handleChatMessage(message.text, this._specialInstructionsHandler.getActiveInstructionContent(), message?.data?.referenceFiles || []);
               }
               break;
 
@@ -140,10 +146,6 @@ export class CoDocView implements WebviewViewProvider {
               this._specialInstructionsHandler.setActiveSpecialInstruction(message.data?.id ?? null);
               break;
 
-            case "refresh":
-              this.chatHandler.resetConversation();
-              break;
-
             default:
               this.sendMessage({
                 type: "error",
@@ -162,7 +164,7 @@ export class CoDocView implements WebviewViewProvider {
   }
 
   public webViewReset() {
-    this.chatHandler.resetConversation();
+    this._chatHandler.resetConversation();
   }
 
   public sendMessage(message: MessageEvent) {

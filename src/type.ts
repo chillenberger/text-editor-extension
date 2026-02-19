@@ -1,3 +1,6 @@
+export type RelativePath = string & {__brand: "relativePath"};
+export type AbsolutePath = string & {__brand: "absolutePath"};
+
 export interface UserState {
   initialized: boolean;
   messageHistory?: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
@@ -5,11 +8,18 @@ export interface UserState {
   activeSpecialInstructionId?: string | null;
 }
 
+export interface File {
+  type: 'file' | 'directory';
+  name: string;
+  relativePath: RelativePath;
+  fullPath: AbsolutePath;
+}
+
 export interface VsCodeMessage {
     command: 
     | "ready" 
+    | "refresh"
     | "chatMessage" 
-    | "refresh" 
     | "createSpecialInstruction" 
     | "updateSpecialInstruction" 
     | "deleteSpecialInstruction" 
@@ -19,6 +29,7 @@ export interface VsCodeMessage {
     id?: string;
     title?: string;
     content?: string;
+    referenceFiles?: Array<RelativePath>;
   };
 }
 
@@ -28,9 +39,9 @@ export type ResponseModes = "planned" | "executed";
 export interface PlanningRequest {
   input: {
     messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
-    new_message: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
     mode: RequestModes;
     special_instructions?: string;
+    reference_files?: Array<RelativePath>;
   };
 }
 
@@ -71,12 +82,15 @@ export interface MessageEvent {
     | "initialize" 
     | "tool_call" 
     | "tool_use" 
-    | "specialInstructionsUpdated";
+    | "specialInstructionsUpdated"
+    | "setCurrentFile"
+    | "activeTabUpdate";
   data: {
     messages?: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
     text?: string;
     specialInstructions?: SpecialInstruction[];
     activeSpecialInstructionId?: string | null;
+    activeTab?: File | null;
   };
 }
 

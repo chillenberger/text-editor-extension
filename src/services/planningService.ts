@@ -11,7 +11,8 @@ import {
   toolResultMessage,
   humanMessage,
   RequestModes,
-  ResponseModes
+  ResponseModes,
+  RelativePath
  } from "../type.js";
 import { ToolExecutor } from "./toolExecutor.js";
 import * as vscode from 'vscode';
@@ -20,27 +21,28 @@ const PLANNING_API_URL = "http://localhost:8000/general_agent/invoke";
 
 interface InvokePlan {
   messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
-  newMessage: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
   mode: "plan" | "execute" | "auto";
+  specialInstructions?: string;
+  referenceFiles?: Array<RelativePath>;
 }
 
 interface ExecutePlanningLoop {
   messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
-  newMessage: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
   specialInstructions?: string;
+  referenceFiles?: Array<RelativePath>;
 }
 
 export class PlanningService {
   private webviewMessenger: (message: MessageEvent) => void = () => {};
   constructor(private toolExecutor: ToolExecutor) {}
 
-  async invokePlan({messages, newMessage, mode, specialInstructions}: InvokePlan & { specialInstructions?: string }): Promise<PlanningResponse> {
+  async invokePlan({messages, mode, specialInstructions, referenceFiles}: InvokePlan): Promise<PlanningResponse> {
     const body: PlanningRequest = {
       input: {
         messages: messages,
-        new_message: newMessage,
         mode: mode,
         special_instructions: specialInstructions,
+        reference_files: referenceFiles || []
       },
     };
     
@@ -66,7 +68,7 @@ export class PlanningService {
     }
   }
 
-  async executePlanningLoop({messages, newMessage, specialInstructions}: ExecutePlanningLoop): Promise<Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>> {
+  async executePlanningLoop({messages, specialInstructions, referenceFiles}: ExecutePlanningLoop): Promise<Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>> {
     let iterations = 0;
     const maxIterations = 10;
 
@@ -77,13 +79,14 @@ export class PlanningService {
 
         // Only one planning cycle then only execute. 
         const requestMode = !responseMode ? "auto" : "execute";
-        const parsedResponse: PlanningResponse = await this.invokePlan({messages, newMessage, mode: requestMode, specialInstructions});
+        const parsedResponse: PlanningResponse = await this.invokePlan({messages, mode: requestMode, specialInstructions, referenceFiles});
         const output: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage = parsedResponse.output.message;
         responseMode = parsedResponse.output.mode;
-        messages.push(...[newMessage, output]);
+        // messages.push(...[newMessage, output]);
+        messages.push(output);
 
         if (responseMode === "planned") {
-          newMessage = humanMessage("Execute the plan");
+          messages.push(humanMessage("Execute the plan"));
           continue;
         } else {
           if ( output.type === "assistant") {
@@ -93,11 +96,13 @@ export class PlanningService {
             const toolCall = output.tool;
             try {
               const resultMessage = await this.toolExecutor.execute({tool: toolCall.name, arguments: toolCall.args});
-              newMessage = toolResultMessage(resultMessage, toolCall.id, toolCall.name);
+              // newMessage = toolResultMessage(resultMessage, toolCall.id, toolCall.name);
+              messages.push(toolResultMessage(resultMessage, toolCall.id, toolCall.name));
 
             } catch (error) {
               vscode.window.showErrorMessage(`Error executing tool ${toolCall.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
-              newMessage = toolResultMessage(`Error executing tool: ${error instanceof Error ? error.message : "Unknown error"}`, toolCall.id, toolCall.name);
+              // newMessage = toolResultMessage(`Error executing tool: ${error instanceof Error ? error.message : "Unknown error"}`, toolCall.id, toolCall.name);
+              messages.push(toolResultMessage(`Error executing tool: ${error instanceof Error ? error.message : "Unknown error"}`, toolCall.id, toolCall.name));
             }
             continue;
           }
