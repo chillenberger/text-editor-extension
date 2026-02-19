@@ -6,6 +6,7 @@ import {
   ToolResultMessage,
   AssistantMessage, 
   UserState,
+  RelativePath,
 } from "../type.js";
 import { PlanningService } from "../services/planningService.js";
 import { ToolExecutor } from "../services/toolExecutor.js";
@@ -31,9 +32,8 @@ export class ChatHandler {
   }
 
   // --- Chat handling ---
-  async handleChatMessage(instruction: string, activeSpecialInstructionContent?: string) {
+  async handleChatMessage(instruction: string, activeSpecialInstructionContent?: string, referenceFiles?: Array<RelativePath>) {
     try {
-      const messages = [...this._conversationHistory];
       const newMessage = humanMessage(instruction);
       this._conversationHistory.push(newMessage);
       this._sendMessage({ type: "message", data: { messages: [newMessage] } });
@@ -41,9 +41,9 @@ export class ChatHandler {
       const specialInstructions = activeSpecialInstructionContent || "";
 
       const responses = await this.planningService.executePlanningLoop({
-        messages,
-        newMessage,
-        specialInstructions
+        messages: this._conversationHistory,
+        specialInstructions,
+        referenceFiles,
       });
 
       if (!responses || responses.length === 0) {

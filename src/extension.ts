@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { CoDocView } from './panels/CoDocPanel';
 import { UserState } from './type';
+import { fileToMessage, uriToFile, getActiveTabUri } from './utilities';
 
 export function activate(context: vscode.ExtensionContext) {
 	const extensionManager = new ExtensionManager(context);
@@ -15,6 +16,17 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.showInformationMessage('CoDoc user state cleared.');
 		})
 	);
+
+	let activeViewStateChangeListener = vscode.window.tabGroups.onDidChangeTabGroups(event => {
+		const uri = getActiveTabUri();
+
+    if (uri) {
+        const file = uriToFile(uri);
+        const message = fileToMessage(file);
+        extensionManager.getProvider().sendMessage(message);
+    }
+	});
+	context.subscriptions.push(activeViewStateChangeListener);
 }
 
 export function deactivate() {}
