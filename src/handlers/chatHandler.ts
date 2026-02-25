@@ -1,5 +1,5 @@
 import { 
-  MessageEvent, 
+  ExtensionPostCommand, 
   humanMessage, 
   HumanMessage, 
   ToolCallMessage,
@@ -19,7 +19,7 @@ export class ChatHandler {
   constructor(
     private _userState: UserState, 
     private _setUserState: (newState: UserState) => void, 
-    private _sendMessage: (message: MessageEvent) => void
+    private _sendMessage: (message: ExtensionPostCommand) => void
   ) {
     this._conversationHistory = _userState.messageHistory ? [..._userState.messageHistory] : [];
 		const toolExecutor = new ToolExecutor();
@@ -36,12 +36,14 @@ export class ChatHandler {
     try {
       const newMessage = humanMessage(instruction);
       this._conversationHistory.push(newMessage);
+
+      // update UI with request immediately
       this._sendMessage({ type: "message", data: { messages: [newMessage] } });
 
       const specialInstructions = activeSpecialInstructionContent || "";
 
       const responses = await this.planningService.executePlanningLoop({
-        messages: this._conversationHistory,
+        messages: [...this._conversationHistory],
         specialInstructions,
         referenceFiles,
       });

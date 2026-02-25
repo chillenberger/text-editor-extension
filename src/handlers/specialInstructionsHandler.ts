@@ -1,5 +1,5 @@
 import { 
-  MessageEvent,
+  ExtensionPostCommand,
   UserState,
   SpecialInstruction
 } from "../type.js";
@@ -8,7 +8,7 @@ export class SpecialInstructionsHandler {
   private _specialInstructions: SpecialInstruction[];
   private _activeSpecialInstructionId: string | null;
 
-  constructor(private _userState: UserState, private setUserState: (state: UserState) => void, private _sendMessage: (message: MessageEvent) => void) {
+  constructor(private _userState: UserState, private setUserState: (state: UserState) => void, private _sendMessage: (message: ExtensionPostCommand) => void) {
     this._specialInstructions = _userState.specialInstructions ? [..._userState.specialInstructions] : [];
     this._activeSpecialInstructionId = _userState.activeSpecialInstructionId ?? null;
   }

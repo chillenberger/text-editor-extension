@@ -1,6 +1,6 @@
 import { Uri, Webview, window, TabInputCustom, TabInputNotebook, TabInputText, TabInputWebview } from "vscode";
 import type { WorkspaceFolder } from "vscode";
-import type { AbsolutePath, File, MessageEvent, RelativePath } from "./type";
+import type { AbsolutePath, File, ExtensionPostCommand, RelativePath } from "./type";
 import { workspace } from "vscode";
 import * as path from 'path';
 
@@ -71,7 +71,7 @@ export function resolveUri(path: string, workspaceFolders: readonly WorkspaceFol
       };
   }
   
-  export function fileToMessage(file: File | null): MessageEvent {
+  export function fileToMessage(file: File | null): ExtensionPostCommand {
       return {
         type: "activeTabUpdate",
         data: {

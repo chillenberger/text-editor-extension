@@ -6,7 +6,7 @@ import {
   ToolResultMessage, 
   HumanMessage, 
   AssistantMessage,
-  MessageEvent,
+  ExtensionPostCommand,
   toolCallMessage, 
   toolResultMessage,
   humanMessage,
@@ -17,7 +17,7 @@ import {
 import { ToolExecutor } from "./toolExecutor.js";
 import * as vscode from 'vscode';
 
-const PLANNING_API_URL = "http://localhost:8000/general_agent/invoke";
+const PLANNING_API_URL = "http://localhost:8000/agent/invoke";
 
 interface InvokePlan {
   messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
@@ -33,7 +33,7 @@ interface ExecutePlanningLoop {
 }
 
 export class PlanningService {
-  private webviewMessenger: (message: MessageEvent) => void = () => {};
+  private webviewMessenger: (message: ExtensionPostCommand) => void = () => {};
   constructor(private toolExecutor: ToolExecutor) {}
 
   async invokePlan({messages, mode, specialInstructions, referenceFiles}: InvokePlan): Promise<PlanningResponse> {
@@ -119,11 +119,11 @@ export class PlanningService {
     return messages.slice(messages.length - iterations - 1) as Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
   }
 
-  public setWebviewMessenger(messenger: (message: MessageEvent) => void) {
+  public setWebviewMessenger(messenger: (message: ExtensionPostCommand) => void) {
     this.webviewMessenger = messenger;
   }
 
-  private _sendMessage(message: MessageEvent) {
+  private _sendMessage(message: ExtensionPostCommand) {
     this.webviewMessenger(message);
   }
 }

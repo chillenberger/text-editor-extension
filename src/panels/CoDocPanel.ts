@@ -6,12 +6,11 @@ import {
   WebviewView,
   WebviewViewResolveContext,
   CancellationToken,
-  window,
 } from "vscode";
 import { getNonce, getUri, uriToFile, getActiveTabUri} from "../utilities.js";
 import { 
-  VsCodeMessage, 
-  MessageEvent,
+  WebviewPostCommand, 
+  ExtensionPostCommand,
   UserState,
 } from "../type.js";
 import { SpecialInstructionsHandler } from "../handlers/specialInstructionsHandler.js";
@@ -25,6 +24,13 @@ export class CoDocView implements WebviewViewProvider {
   private _chatHandler: ChatHandler;
   private _specialInstructionsHandler: SpecialInstructionsHandler;
 
+  /* 
+  * Initialize the View
+  *
+  * _extensionUri: URI of the extension, used to load local resources into the webview
+  * userState: The persisted state for the user, containing conversation history and special instructions
+  * _setUserState: A function to update the persisted user state when changes occur (e.g., new messages, updated instructions)
+  */
   constructor(
     private readonly _extensionUri: Uri,
     userState: UserState,
@@ -34,6 +40,7 @@ export class CoDocView implements WebviewViewProvider {
     this._specialInstructionsHandler = new SpecialInstructionsHandler(userState, this._setUserState, this.sendMessage.bind(this));
   }
 
+  // Webview boilerplate to initialization and message handling setup
   public resolveWebviewView(
     webviewView: WebviewView,
     _context: WebviewViewResolveContext,
@@ -57,6 +64,7 @@ export class CoDocView implements WebviewViewProvider {
     this._setWebviewMessageListener(webviewView.webview);
   }
 
+  // Generate the HTML from react build and set up message listener for communication from the webview.
   private _getWebviewContent(webview: Webview, extensionUri: Uri) {
     const stylesUri = getUri(webview, extensionUri, [
       "webview-ui",
@@ -91,12 +99,14 @@ export class CoDocView implements WebviewViewProvider {
     `;
   }
 
+  // Parse and execute messages received from the webview
   private _setWebviewMessageListener(webview: Webview) {
     webview.onDidReceiveMessage(
-      async (message: VsCodeMessage) => {
+      async (message: WebviewPostCommand) => {
         try {
           switch (message.command) {
             case "ready":
+              // When webview is ready, send the initial state including conversation history, special instructions and active tab info
               const uri = getActiveTabUri();
               this.sendMessage({
                 type: "initialize",
@@ -110,22 +120,26 @@ export class CoDocView implements WebviewViewProvider {
               break;
 
             case "refresh":
+              // When the webview requests a refresh, reset the conversation
               this._chatHandler.resetConversation();
               break;
 
             case "chatMessage":
+              // When the webview sends a chat message, handle it and update the conversation
               if (message.text) {
                 await this._chatHandler.handleChatMessage(message.text, this._specialInstructionsHandler.getActiveInstructionContent(), message?.data?.referenceFiles || []);
               }
               break;
 
             case "createSpecialInstruction":
+              // When the webview sends a request to create a new special instruction, create it and update the list
               if (message.data?.title !== undefined && message.data?.content !== undefined) {
                 this._specialInstructionsHandler.createSpecialInstruction(message.data.title, message.data.content);
               }
               break;
 
             case "updateSpecialInstruction":
+              // When the webview sends a request to update an existing special instruction, update it and refresh the list
               if (message.data?.id) {
                 this._specialInstructionsHandler.updateSpecialInstruction(
                   message.data.id,
@@ -136,13 +150,14 @@ export class CoDocView implements WebviewViewProvider {
               break;
 
             case "deleteSpecialInstruction":
+              // When the webview sends a request to delete a special instruction, delete it and refresh the list
               if (message.data?.id) {
                 this._specialInstructionsHandler.deleteSpecialInstruction(message.data.id);
               }
               break;
 
             case "setActiveSpecialInstruction":
-              // data.id can be undefined/null to deactivate
+              // When the webview sends a request to set the active special instruction, update it
               this._specialInstructionsHandler.setActiveSpecialInstruction(message.data?.id ?? null);
               break;
 
@@ -167,7 +182,7 @@ export class CoDocView implements WebviewViewProvider {
     this._chatHandler.resetConversation();
   }
 
-  public sendMessage(message: MessageEvent) {
+  public sendMessage(message: ExtensionPostCommand) {
     if (this._view) {
       this._view.webview.postMessage(message);
     }
