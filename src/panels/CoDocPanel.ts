@@ -36,6 +36,7 @@ export class CoDocView implements WebviewViewProvider {
     userState: UserState,
     private _setUserState: (newState: UserState) => void
   ) {
+    // Initialize needed handlers
     this._chatHandler = new ChatHandler(userState, this._setUserState, this.sendMessage.bind(this));
     this._specialInstructionsHandler = new SpecialInstructionsHandler(userState, this._setUserState, this.sendMessage.bind(this));
   }
@@ -99,66 +100,38 @@ export class CoDocView implements WebviewViewProvider {
     `;
   }
 
-  // Parse and execute messages received from the webview
+  // Route messages from webview
   private _setWebviewMessageListener(webview: Webview) {
     webview.onDidReceiveMessage(
       async (message: WebviewPostCommand) => {
         try {
           switch (message.command) {
             case "ready":
-              // When webview is ready, send the initial state including conversation history, special instructions and active tab info
-              const uri = getActiveTabUri();
-              this.sendMessage({
-                type: "initialize",
-                data: {
-                  messages: [...this._chatHandler.getChatHistory()],
-                  specialInstructions: [...this._specialInstructionsHandler.getSpecialInstructions()],
-                  activeSpecialInstructionId: this._specialInstructionsHandler.getActiveSpecialInstructionId(),
-                  activeTab: uri ? uriToFile(uri) : null,
-                }
-              });
+              this._onReady();
               break;
 
             case "refresh":
-              // When the webview requests a refresh, reset the conversation
-              this._chatHandler.resetConversation();
+              this.webViewReset();
               break;
 
             case "chatMessage":
-              // When the webview sends a chat message, handle it and update the conversation
-              if (message.text) {
-                await this._chatHandler.handleChatMessage(message.text, this._specialInstructionsHandler.getActiveInstructionContent(), message?.data?.referenceFiles || []);
-              }
+              await this._onChatMessage(message?.text);
               break;
 
             case "createSpecialInstruction":
-              // When the webview sends a request to create a new special instruction, create it and update the list
-              if (message.data?.title !== undefined && message.data?.content !== undefined) {
-                this._specialInstructionsHandler.createSpecialInstruction(message.data.title, message.data.content);
-              }
+              this._onCreateSpecialInstruction(message.data?.title, message.data?.content);
               break;
 
             case "updateSpecialInstruction":
-              // When the webview sends a request to update an existing special instruction, update it and refresh the list
-              if (message.data?.id) {
-                this._specialInstructionsHandler.updateSpecialInstruction(
-                  message.data.id,
-                  message.data.title,
-                  message.data.content
-                );
-              }
+              this._onUpdateSpecialInstruction(message.data?.id, message.data?.title, message.data?.content);
               break;
 
             case "deleteSpecialInstruction":
-              // When the webview sends a request to delete a special instruction, delete it and refresh the list
-              if (message.data?.id) {
-                this._specialInstructionsHandler.deleteSpecialInstruction(message.data.id);
-              }
+              this._onDeleteSpecialInstruction(message.data?.id);
               break;
 
             case "setActiveSpecialInstruction":
-              // When the webview sends a request to set the active special instruction, update it
-              this._specialInstructionsHandler.setActiveSpecialInstruction(message.data?.id ?? null);
+              this._onSetActiveSpecialInstruction(message.data?.id);
               break;
 
             default:
@@ -178,10 +151,55 @@ export class CoDocView implements WebviewViewProvider {
     );
   }
 
+  // Initialize webview with persisted state
+  private _onReady() {
+    const uri = getActiveTabUri();
+    this.sendMessage({
+      type: "initialize",
+      data: {
+        messages: [...this._chatHandler.getChatHistory()],
+        specialInstructions: [...this._specialInstructionsHandler.getSpecialInstructions()],
+        activeSpecialInstructionId: this._specialInstructionsHandler.getActiveSpecialInstructionId(),
+        activeTab: uri ? uriToFile(uri) : null,
+      }
+    });
+  }
+
+  private async _onChatMessage(message: string | undefined) {
+    if (message) {
+      await this._chatHandler.handleChatMessage(message, this._specialInstructionsHandler.getActiveInstructionContent());
+    }
+  }
+
+  private _onCreateSpecialInstruction(title: string | undefined, content: string | undefined) {
+    if (title !== undefined && content !== undefined) {
+      this._specialInstructionsHandler.createSpecialInstruction(title, content);
+    }
+  }
+
+  private _onUpdateSpecialInstruction(id: string | undefined, title: string | undefined, content: string | undefined) {
+    if (id !== undefined && title !== undefined && content !== undefined) {
+      this._specialInstructionsHandler.updateSpecialInstruction(id, title, content);
+    }
+  }
+
+  private _onDeleteSpecialInstruction(id: string | undefined) {
+    if (id !== undefined) {
+      this._specialInstructionsHandler.deleteSpecialInstruction(id);
+    }
+  }
+
+  private _onSetActiveSpecialInstruction(id: string | null | undefined) {
+    if (id !== undefined) {
+      this._specialInstructionsHandler.setActiveSpecialInstruction(id);
+    }
+  }
+
   public webViewReset() {
     this._chatHandler.resetConversation();
   }
 
+  // Send commands to webview
   public sendMessage(message: ExtensionPostCommand) {
     if (this._view) {
       this._view.webview.postMessage(message);

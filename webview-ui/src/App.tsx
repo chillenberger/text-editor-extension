@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { VsCodeMessage } from '../../src/type'
+import type { WebviewPostCommand } from '../../src/type'
 import ChatArea from './components/chatArea/ChatArea'
 import SpecialInstructions from './components/specialInstructions/SpecialInstructions'
 import { useSpecialInstructions } from './hooks/useSpecialInstructions'
@@ -8,18 +8,18 @@ import MessageBoard from './components/messageBoard/MessageBoard'
 import './App.css'
 
 declare const vscode: {
-  postMessage: (message: any) => void
+  postMessage: (message: WebviewPostCommand) => void
 }
 
 function App() {
   const specialInstructionsControl: UseSpecialInstructions = useSpecialInstructions()
 
   useEffect(() => {
-    vscode.postMessage({ command: 'ready' })
+    vscode.postMessage({ command: 'ready' } as WebviewPostCommand)
   }, [])
 
   const resetChat = () => {
-    vscode.postMessage({ command: "refresh" } as VsCodeMessage)
+    vscode.postMessage({ command: "refresh" } as WebviewPostCommand)
   }
 
   return (

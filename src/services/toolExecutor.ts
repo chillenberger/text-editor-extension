@@ -1,8 +1,12 @@
 import * as vscode from "vscode";
-import { ToolCall } from "../type";
 import { ProposalManager, ProposalDocumentProvider, ProposalCodeLensProvider } from "./proposalService.js";
 import { FileExtractor, File } from "./fileExtractor";
 import { resolveUri } from "../utilities";
+
+interface ToolCall {
+  tool: string;
+  arguments: Record<string, any>;
+}
 
 export interface ToolHandler {
   (toolCall: ToolCall): Promise<string>;
@@ -326,3 +330,5 @@ export class ToolExecutor {
     });
   }
 }
+
+

@@ -1,4 +1,3 @@
-import { request } from "http";
 import { 
   PlanningRequest, 
   PlanningResponse, 
@@ -7,21 +6,22 @@ import {
   HumanMessage, 
   AssistantMessage,
   ExtensionPostCommand,
-  toolCallMessage, 
-  toolResultMessage,
-  humanMessage,
+  PlanningResponseSchema,
   RequestModes,
   ResponseModes,
-  RelativePath
+  RelativePath, 
+  toolResultMessageSchema,
+  humanMessageSchema,
  } from "../type.js";
 import { ToolExecutor } from "./toolExecutor.js";
 import * as vscode from 'vscode';
+import * as z from 'zod';
 
 const PLANNING_API_URL = "http://localhost:8000/agent/invoke";
 
 interface InvokePlan {
   messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
-  mode: "plan" | "execute" | "auto";
+  mode: RequestModes;
   specialInstructions?: string;
   referenceFiles?: Array<RelativePath>;
 }
@@ -47,7 +47,7 @@ export class PlanningService {
     };
     
     try {
-      const response = await fetch(PLANNING_API_URL, {
+      const response: Response = await fetch(PLANNING_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -59,12 +59,14 @@ export class PlanningService {
         throw new Error(`Planning API error: ${response.statusText}`);
       }
 
-      return await response.json() as PlanningResponse;
+      const json = await response.json();
+      return PlanningResponseSchema.parse(json);
     } catch (error) {
-      vscode.window.showErrorMessage(`Failed to invoke plan: ${error instanceof Error ? error.message : "Unknown error"}`);
-      throw new Error(
-        `Failed to invoke plan: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+      const errorMessage = error instanceof z.ZodError
+        ? `Planning API response validation error: ${error.message}`
+        : `Failed to invoke plan: ${error instanceof Error ? error.message : "Unknown error"}`;
+      vscode.window.showErrorMessage(errorMessage );
+      throw new Error(errorMessage);
     }
   }
 
@@ -77,38 +79,35 @@ export class PlanningService {
       try {
         this._sendMessage({ type: "working", data: { text: `Working...` } });
 
-        // Only one planning cycle then only execute. 
+        // For now 0 -> 1 planning cycles allowed. 
         const requestMode = !responseMode ? "auto" : "execute";
         const parsedResponse: PlanningResponse = await this.invokePlan({messages, mode: requestMode, specialInstructions, referenceFiles});
         const output: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage = parsedResponse.output.message;
         responseMode = parsedResponse.output.mode;
-        // messages.push(...[newMessage, output]);
+        
         messages.push(output);
 
         if (responseMode === "planned") {
-          messages.push(humanMessage("Execute the plan"));
+          // TODO: Add user permissions and insight
+          messages.push(
+            humanMessageSchema.parse({content: "Execute the plan"})
+          );
           continue;
         } else {
           if ( output.type === "assistant") {
+            // Assistant message is the final output of a request
             break;
           } else if (output.type === "tool_call" && output.tool) {
             this._sendMessage({ type: "tool_call", data: { messages: [output] } });
-            const toolCall = output.tool;
-            try {
-              const resultMessage = await this.toolExecutor.execute({tool: toolCall.name, arguments: toolCall.args});
-              // newMessage = toolResultMessage(resultMessage, toolCall.id, toolCall.name);
-              messages.push(toolResultMessage(resultMessage, toolCall.id, toolCall.name));
 
-            } catch (error) {
-              vscode.window.showErrorMessage(`Error executing tool ${toolCall.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
-              // newMessage = toolResultMessage(`Error executing tool: ${error instanceof Error ? error.message : "Unknown error"}`, toolCall.id, toolCall.name);
-              messages.push(toolResultMessage(`Error executing tool: ${error instanceof Error ? error.message : "Unknown error"}`, toolCall.id, toolCall.name));
-            }
+            const message = await this._handleToolCall(output);
+            messages.push(message);
             continue;
           }
         }
       } catch (error) {
         vscode.window.showErrorMessage(`Error during planning loop: ${error instanceof Error ? error.message : "Unknown error"}`);
+        // TODO: return error message to conversation
         break;
       }
       iterations++;
@@ -117,6 +116,26 @@ export class PlanningService {
 
     // Return final output message only
     return messages.slice(messages.length - iterations - 1) as Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+  }
+
+  private async _handleToolCall(toolCall: ToolCallMessage): Promise<ToolResultMessage> {
+    try {
+      const result = await this.toolExecutor.execute({tool: toolCall.tool.name, arguments: toolCall.tool.args});
+      return toolResultMessageSchema.parse({
+        content: result, 
+        tool_call_id: toolCall.tool.id, 
+        tool_name: toolCall.tool.name
+      });
+    } catch (error) {
+      vscode.window.showErrorMessage(`Error executing tool ${toolCall.tool.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
+      return toolResultMessageSchema.parse(
+        {
+          content: "Error executing tool",
+          tool_call_id: toolCall.tool.id,
+          tool_name: toolCall.tool.name
+        }
+      );
+    }
   }
 
   public setWebviewMessenger(messenger: (message: ExtensionPostCommand) => void) {

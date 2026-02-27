@@ -1,4 +1,4 @@
-import type { WebviewPostCommand, SpecialInstruction, ExtensionPostCommand } from "../../../src/type"
+import type { SpecialInstruction, ExtensionPostCommand } from "../../../src/type"
 import { useEffect, useState } from "react"
 
 type ModalView = 'list' | 'edit';
@@ -64,17 +64,12 @@ export function useSpecialInstructions(): UseSpecialInstructions {
   }
 
   const saveInstruction = () => {
-    if (editingId) {
-      vscode.postMessage({
-        command: "updateSpecialInstruction",
-        data: { id: editingId, title: editTitle, content: editContent }
-      } as WebviewPostCommand)
-    } else {
-      vscode.postMessage({
-        command: "createSpecialInstruction",
-        data: { title: editTitle, content: editContent }
-      } as WebviewPostCommand)
-    }
+    vscode.postMessage({
+      command: editingId ? "updateSpecialInstruction" : "createSpecialInstruction",
+      data: editingId
+        ? { id: editingId, title: editTitle, content: editContent }
+        : { title: editTitle, content: editContent }
+    })
     setModalView('list')
     setEditingId(null)
     setEditTitle('')
@@ -92,14 +87,14 @@ export function useSpecialInstructions(): UseSpecialInstructions {
     vscode.postMessage({
       command: "deleteSpecialInstruction",
       data: { id }
-    } as WebviewPostCommand)
+    })
   }
 
   const selectInstruction = (id: string | null) => {
     vscode.postMessage({
       command: "setActiveSpecialInstruction",
       data: { id }
-    } as WebviewPostCommand)
+    })
   }
 
 

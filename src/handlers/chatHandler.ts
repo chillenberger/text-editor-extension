@@ -1,6 +1,6 @@
 import { 
   ExtensionPostCommand, 
-  humanMessage, 
+  humanMessageSchema, 
   HumanMessage, 
   ToolCallMessage,
   ToolResultMessage,
@@ -31,28 +31,25 @@ export class ChatHandler {
     return this._conversationHistory;
   }
 
-  // --- Chat handling ---
   async handleChatMessage(instruction: string, activeSpecialInstructionContent?: string, referenceFiles?: Array<RelativePath>) {
     try {
-      const newMessage = humanMessage(instruction);
+      const newMessage = humanMessageSchema.parse({ content: instruction });
       this._conversationHistory.push(newMessage);
 
-      // update UI with request immediately
+      // Update UI with request immediately
       this._sendMessage({ type: "message", data: { messages: [newMessage] } });
 
+      // Always keep special instructions current
       const specialInstructions = activeSpecialInstructionContent || "";
 
+      // Call server
       const responses = await this.planningService.executePlanningLoop({
         messages: [...this._conversationHistory],
         specialInstructions,
         referenceFiles,
       });
 
-      if (!responses || responses.length === 0) {
-        this._sendMessage({ type: "error", data: { text: "No response from planning service." } });
-        return;
-      }
-
+      // Update conversation history and UI with responses from server
       for (const msg of responses) {
         this._conversationHistory.push(msg);
         if (msg.type === "assistant") {
@@ -60,6 +57,7 @@ export class ChatHandler {
         }
       }
 
+      // Capture current state to persistent storage
       this._persistState();
     } catch (error) {
       const errorText =

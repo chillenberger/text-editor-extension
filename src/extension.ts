@@ -28,7 +28,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Keep view aware of active tab in editor
 	context.subscriptions.push(
-		vscode.window.tabGroups.onDidChangeTabGroups(event => {
+		vscode.window.tabGroups.onDidChangeTabGroups(_ => {
 			const uri = getActiveTabUri();
 
 			if (uri) {

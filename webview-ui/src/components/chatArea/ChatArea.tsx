@@ -1,21 +1,14 @@
 import { useEffect, useState } from 'react'
-import type { VsCodeMessage, MessageEvent, RelativePath } from '../../../../src/type'
+import type { ExtensionPostCommand, WebviewPostCommand, RelativePath } from '../../../../src/type'
 
 export default function ChatArea() {
   const [referenceFile, setReferenceFile] = useState<RelativePath | null>(null)
 
   useEffect(() => {
     const handleMessage = (event: globalThis.MessageEvent) => {
-      const message = event.data as MessageEvent
-      switch (message.type) {
-        case 'activeTabUpdate':
-          setReferenceFile(message.data.activeTab?.relativePath || null)
-          break
-        case 'initialize':
-          setReferenceFile(message.data.activeTab?.relativePath || null)
-          break
-        default:
-          break
+      const message = event.data as ExtensionPostCommand
+      if (message.type === 'activeTabUpdate' || message.type === 'initialize') {
+        setReferenceFile(message.data.activeTab?.relativePath || null)
       }
     }
 
@@ -25,9 +18,16 @@ export default function ChatArea() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    
     const input = (e.target as HTMLFormElement).elements[0] as HTMLTextAreaElement
     if (!input.value.trim()) return
-    const message: VsCodeMessage = { command: "chatMessage", text: input.value, data: { referenceFiles: referenceFile ? [referenceFile] : [] } }
+
+    const message: WebviewPostCommand = { 
+      command: "chatMessage", 
+      text: input.value, 
+      data: { referenceFiles: referenceFile ? [referenceFile] : [] } 
+    }
+
     vscode.postMessage(message)
     input.value = ''
   }

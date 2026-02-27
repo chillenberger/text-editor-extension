@@ -1,8 +1,64 @@
+import * as z from "zod";
 /*
 * Type to track path types 
 */
 export type RelativePath = string & {__brand: "relativePath"};
 export type AbsolutePath = string & {__brand: "absolutePath"};
+
+
+// Request to run a local tool from the assistant.
+export interface ToolCallMessage {
+  type: "tool_call";
+  tool: {
+    name: string;
+    args: Record<string, any>;
+    id: string;
+    type: string;
+  }
+}
+export const toolCallMessageSchema: z.ZodType<ToolCallMessage> = z.object({
+  type: z.literal("tool_call").default("tool_call"),
+  tool: z.object({
+    name: z.string(),
+    args: z.record(z.string(), z.any()),
+    id: z.string(),
+    type: z.string()
+  })
+})
+
+// Response from local tool.
+export interface ToolResultMessage {
+  type: "tool";
+  content: string;
+  tool_call_id: string;
+  tool_name: string;
+}
+export const toolResultMessageSchema: z.ZodType<ToolResultMessage> = z.object({
+  type: z.literal("tool").default("tool"),
+  content: z.string(),
+  tool_call_id: z.string(),
+  tool_name: z.string()
+})
+
+// A message from human 
+export interface HumanMessage {
+  type: "human";
+  content: string;
+}
+export const humanMessageSchema = z.object({
+  type: z.literal("human").default("human"),
+  content: z.string()
+})
+
+// A message from assistant 
+export interface AssistantMessage {
+  type: "assistant";
+  content: string;
+}
+export const assistantMessageSchema = z.object({
+  type: z.literal("assistant").default("assistant"),
+  content: z.string()
+})
 
 /* 
 * Persisted user state contract for conversation history and special instructions.
@@ -94,6 +150,24 @@ export interface PlanningRequest {
 }
 
 /* 
+* Agent API related modes to control planning and execution flow.
+* RequestModes:
+  - "plan": Only generate a plan without executing tools.
+  - "execute": Only execute the provided plan without generating a new one.
+  - "auto": Let the agent decide whether to generate a new plan or execute based on the conversation context and previous interactions.
+*/
+export const RequestModesSchema = z.union([z.literal("plan"), z.literal("execute"), z.literal("auto")]);
+export type RequestModes = z.infer<typeof RequestModesSchema>;
+
+/* 
+* ResponseModes:
+  - "planned": The response contains a generated plan that has not been executed yet.
+  - "executed": The response contains the result of executing a plan, which may include tool results and updated conversation messages.
+*/
+export const ResponseModesSchema = z.union([z.literal("planned"), z.literal("executed")]);
+export type ResponseModes = z.infer<typeof ResponseModesSchema>;
+
+/* 
 * Agent api response contract
 */
 export interface PlanningResponse {
@@ -102,27 +176,12 @@ export interface PlanningResponse {
     mode: ResponseModes;
   }
 }
-
-/* 
-* Agent API related modes to control planning and execution flow.
-* RequestModes:
-  - "plan": Only generate a plan without executing tools.
-  - "execute": Only execute the provided plan without generating a new one.
-  - "auto": Let the agent decide whether to generate a new plan or execute based on the conversation context and previous interactions.
-*/
-export type RequestModes = "plan" | "execute" | "auto";
-
-/* 
-* ResponseModes:
-  - "planned": The response contains a generated plan that has not been executed yet.
-  - "executed": The response contains the result of executing a plan, which may include tool results and updated conversation messages.
-*/
-export type ResponseModes = "planned" | "executed";
-
-export interface ToolCall {
-  tool: string;
-  arguments: Record<string, any>;
-}
+export const PlanningResponseSchema: z.ZodType<PlanningResponse> = z.object({
+  output: z.object({
+    message: z.union([toolCallMessageSchema, toolResultMessageSchema, humanMessageSchema, assistantMessageSchema]),
+    mode: ResponseModesSchema
+  })
+})
 
 export interface SpecialInstruction {
   id: string;
@@ -130,68 +189,4 @@ export interface SpecialInstruction {
   content: string;
   createdAt: number;
   updatedAt: number;
-}
-
-// Request to run a local tool from the assistant.
-export interface ToolCallMessage {
-  type: "tool_call";
-  tool: {
-    name: string;
-    args: Record<string, any>;
-    id: string;
-    type: string;
-  }
-}
-
-export function toolCallMessage(content: string, toolCallId: string, toolName: string): ToolCallMessage {
-  return {
-    type: "tool_call",
-    tool: {
-      name: toolName,
-      args: JSON.parse(content),
-      id: toolCallId,
-      type: "tool_call",
-    }
-  }
-}
-
-// Response to ran local tool.
-export interface ToolResultMessage {
-  type: "tool";
-  content: string;
-  tool_call_id: string;
-  tool_name: string;
-}
-
-export function toolResultMessage(content: string, toolCallId: string, toolName: string): ToolResultMessage {
-  return {
-    type: "tool",
-    content,
-    tool_call_id: toolCallId,
-    tool_name: toolName,
-  }
-}
-
-export interface HumanMessage {
-  type: "human";
-  content: string;
-}
-
-export function humanMessage(content: string): HumanMessage {
-  return {
-    type: "human",
-    content,
-  }
-}
-
-export interface AssistantMessage {
-  type: "assistant";
-  content: string;
-}
-
-export function assistantMessage(content: string): AssistantMessage {
-  return {
-    type: "assistant",
-    content,
-  }
 }
