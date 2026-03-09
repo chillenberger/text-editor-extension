@@ -2,8 +2,8 @@ import {
   ExtensionPostCommand, 
   humanMessageSchema, 
   HumanMessage, 
-  ToolCallMessage,
-  ToolResultMessage,
+  APICallToolRequest,
+  ExtensionAPIUseToolResponse,
   AssistantMessage, 
   UserState,
   RelativePath,
@@ -13,7 +13,7 @@ import { ToolExecutor } from "../services/toolExecutor.js";
 
 export class ChatHandler {
 
-  private _conversationHistory: Array<HumanMessage | ToolCallMessage | ToolResultMessage | AssistantMessage>;
+  private _conversationHistory: Array<HumanMessage | APICallToolRequest | ExtensionAPIUseToolResponse | AssistantMessage>;
   private planningService: PlanningService;
 
   constructor(
@@ -37,7 +37,7 @@ export class ChatHandler {
       this._conversationHistory.push(newMessage);
 
       // Update UI with request immediately
-      this._sendMessage({ type: "message", data: { messages: [newMessage] } });
+      this._sendMessage({ command: "postMessage", data: { messages: [newMessage] } });
 
       // Always keep special instructions current
       const specialInstructions = activeSpecialInstructionContent || "";
@@ -53,7 +53,7 @@ export class ChatHandler {
       for (const msg of responses) {
         this._conversationHistory.push(msg);
         if (msg.type === "assistant") {
-          this._sendMessage({ type: "message", data: { messages: [msg] } });
+          this._sendMessage({ command: "postMessage", data: { messages: [msg] } });
         }
       }
 
@@ -62,12 +62,12 @@ export class ChatHandler {
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Unknown error";
-      this._sendMessage({ type: "error", data: { text: errorText } });
+      this._sendMessage({ command: "setError", data: { text: errorText } });
     }
   }
 
   resetConversation() {
-    this._sendMessage({ type: "clearState", data: { text: "" } });
+    this._sendMessage({ command: "clearMessages"});
     this._conversationHistory = [];
     this._persistState();
   }

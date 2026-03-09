@@ -5,10 +5,9 @@ import * as z from "zod";
 export type RelativePath = string & {__brand: "relativePath"};
 export type AbsolutePath = string & {__brand: "absolutePath"};
 
-
 // Request to run a local tool from the assistant.
-export interface ToolCallMessage {
-  type: "tool_call";
+export interface APICallToolRequest {
+  type: "call_tool";
   tool: {
     name: string;
     args: Record<string, any>;
@@ -16,8 +15,8 @@ export interface ToolCallMessage {
     type: string;
   }
 }
-export const toolCallMessageSchema: z.ZodType<ToolCallMessage> = z.object({
-  type: z.literal("tool_call").default("tool_call"),
+export const apiCallToolRequestSchema: z.ZodType<APICallToolRequest> = z.object({
+  type: z.literal("call_tool").default("call_tool"),
   tool: z.object({
     name: z.string(),
     args: z.record(z.string(), z.any()),
@@ -27,13 +26,13 @@ export const toolCallMessageSchema: z.ZodType<ToolCallMessage> = z.object({
 })
 
 // Response from local tool.
-export interface ToolResultMessage {
+export interface ExtensionAPIUseToolResponse {
   type: "tool";
   content: string;
   tool_call_id: string;
   tool_name: string;
 }
-export const toolResultMessageSchema: z.ZodType<ToolResultMessage> = z.object({
+export const extensionAPIUseToolResponseSchema: z.ZodType<ExtensionAPIUseToolResponse> = z.object({
   type: z.literal("tool").default("tool"),
   content: z.string(),
   tool_call_id: z.string(),
@@ -65,7 +64,7 @@ export const assistantMessageSchema = z.object({
 */
 export interface UserState {
   initialized: boolean;
-  messageHistory?: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+  messageHistory?: Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
   specialInstructions?: SpecialInstruction[];
   activeSpecialInstructionId?: string | null;
 }
@@ -77,64 +76,136 @@ export interface File {
   fullPath: AbsolutePath;
 }
 
+
+export interface CommandTemplate<T> {
+  command: string;
+  data?: T;
+}
 /* 
 * Extension -> webview messages
-*
-* Message: human or assistant conversation,
-* Error: error message to display in UI,
-* Working: Display inner workings of system (e.g. "Calling tool X with arguments Y"),
-* ClearState: Clear conversation history and reset state, as commanded by vscode
-* Initialize: Initial message from extension to populate UI with existing conversation history.
-* Tool_call: Message to indicate a tool is being called with arguments, used to update UI with current tool calls.
 */
-export interface ExtensionPostCommand {
-  type: 
-    "message" 
-    | "error" 
-    | "working" 
-    | "clearState" 
-    | "initialize" 
-    | "tool_call" 
-    | "tool_use" 
-    | "specialInstructionsUpdated"
-    | "setCurrentFile"
-    | "activeTabUpdate";
-  data: {
-    messages?: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
-    text?: string;
-    specialInstructions?: SpecialInstruction[];
-    activeSpecialInstructionId?: string | null;
-    activeTab?: File | null;
-  };
+export type ExtensionPostCommand = 
+  | ExtensionPostCommandInitialize
+  | ExtensionPostCommandSetWorking
+  | ExtensionPostCommandSetToolCalled
+  | ExtensionPostCommandSetToolUsed
+  | ExtensionPostCommandUpdatedSpecialInstructions
+  | ExtensionPostCommandSetActiveTab
+  | ExtensionPostCommandClearMessages
+  | ExtensionPostCommandSetError
+  | ExtensionPostCommandPostMessage;
+
+export interface ExtensionPostCommandInitialize extends CommandTemplate<{
+  messages: Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
+  specialInstructions: SpecialInstruction[];
+  activeSpecialInstructionId: string | null;
+  activeTab: File | null;
+}> {
+  command: "initialize";
+}
+
+export interface ExtensionPostCommandSetWorking extends CommandTemplate<{
+  text: string;
+}> {
+  command: "setWorking";
+}
+
+export interface ExtensionPostCommandSetToolCalled extends CommandTemplate<{
+  messages: Array<APICallToolRequest>;
+}> {
+  command: "setToolCalled";
+}
+
+export interface ExtensionPostCommandSetToolUsed extends CommandTemplate<{
+  text: string;
+}> {
+  command: "setToolUsed";
+}
+
+export interface ExtensionPostCommandPostMessage extends CommandTemplate<{
+  messages: Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
+}> {
+  command: "postMessage";
+}
+
+export interface ExtensionPostCommandClearMessages extends CommandTemplate<undefined> {
+  command: "clearMessages";
+}
+
+export interface ExtensionPostCommandUpdatedSpecialInstructions extends CommandTemplate<{
+  specialInstructions: SpecialInstruction[];
+  activeSpecialInstructionId: string | null;
+}> {
+  command: "updatedSpecialInstructions";
+}
+
+export interface ExtensionPostCommandSetActiveTab extends CommandTemplate<{
+  activeTab: File | null;
+}> {
+  command: "setActiveTab";
+}
+
+export interface ExtensionPostCommandSetError extends CommandTemplate<{
+  text: string;
+}> {
+  command: "setError";
 }
 
 /* 
 * webview -> extension messages
-*
-* ready: Indicate webview is ready to receive messages,
-* refresh: Clear conversation history and reset state, as commanded by UI.
-* chatMessage: A new message from the user to add to the conversation,
-* createSpecialInstruction: Create a new special instruction with provided title and content,
-* updateSpecialInstruction: Update an existing special instruction with new title and/or content,
-* deleteSpecialInstruction: Delete an existing special instruction by id,
-* setActiveSpecialInstruction: Set a special instruction as active by id, which will be included in agent planning requests.
 */
-export interface WebviewPostCommand {
-    command: 
-    | "ready" 
-    | "refresh"
-    | "chatMessage" 
-    | "createSpecialInstruction" 
-    | "updateSpecialInstruction" 
-    | "deleteSpecialInstruction" 
-    | "setActiveSpecialInstruction";
-  text?: string;
-  data?: {
-    id?: string;
-    title?: string;
-    content?: string;
-    referenceFiles?: Array<RelativePath>;
-  };
+export type WebviewPostCommand =
+  | WebviewPostCommandReady
+  | WebviewPostCommandRefresh
+  | WebviewPostCommandPostMessage
+  | WebviewPostCommandCreateSpecialInstruction
+  | WebviewPostCommandUpdateSpecialInstruction
+  | WebviewPostCommandDeleteSpecialInstruction
+  | WebviewPostCommandSetActiveSpecialInstruction;
+
+/* 
+* Agent API related types and contracts
+*/
+export interface WebviewPostCommandReady extends CommandTemplate<undefined> {
+  command: "ready";
+}
+
+export interface WebviewPostCommandRefresh extends CommandTemplate<undefined> {
+  command: "refresh";
+}
+
+export interface WebviewPostCommandPostMessage extends CommandTemplate<{
+  content: string;
+  referenceFiles?: Array<RelativePath>;
+}> {
+  command: "postMessage";
+}
+
+export interface WebviewPostCommandCreateSpecialInstruction extends CommandTemplate<{
+  title: string;
+  content: string;
+}> {
+  command: "createSpecialInstruction";
+}
+
+export interface WebviewPostCommandUpdateSpecialInstruction extends CommandTemplate<{
+  id: string;
+  title?: string;
+  content?: string;
+}> {
+  command: "updateSpecialInstruction";
+}
+
+export interface WebviewPostCommandDeleteSpecialInstruction extends CommandTemplate<{
+  id: string;
+}> {
+  command: "deleteSpecialInstruction";
+}
+
+export interface WebviewPostCommandSetActiveSpecialInstruction extends CommandTemplate<{
+  id: string | null;
+}> {
+  command: "setActiveSpecialInstruction";
 }
 
 /*
@@ -142,7 +213,7 @@ export interface WebviewPostCommand {
 */
 export interface PlanningRequest {
   input: {
-    messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+    messages: Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
     mode: RequestModes;
     special_instructions?: string;
     reference_files?: Array<RelativePath>;
@@ -172,13 +243,13 @@ export type ResponseModes = z.infer<typeof ResponseModesSchema>;
 */
 export interface PlanningResponse {
   output: {
-    message: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage;
+    message: APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage;
     mode: ResponseModes;
   }
 }
 export const PlanningResponseSchema: z.ZodType<PlanningResponse> = z.object({
   output: z.object({
-    message: z.union([toolCallMessageSchema, toolResultMessageSchema, humanMessageSchema, assistantMessageSchema]),
+    message: z.union([apiCallToolRequestSchema, extensionAPIUseToolResponseSchema, humanMessageSchema, assistantMessageSchema]),
     mode: ResponseModesSchema
   })
 })

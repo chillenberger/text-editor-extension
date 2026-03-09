@@ -33,29 +33,29 @@ export default function MessageBoard() {
   useEffect(() => {
     const handleMessage = (event: globalThis.MessageEvent) => {
       const message = event.data
-      switch (message.type) {
+      switch (message.command) {
         case 'initialize':
           message.data.messages.forEach((msg: HumanMessage | AssistantMessage) =>
             appendMessageToBoard(msg)
           )
           setUpdate(null)
           break
-        case 'message':
+        case 'postMessage':
           message.data.messages.forEach((msg: HumanMessage | AssistantMessage) =>
             appendMessageToBoard(msg)
           )
           setUpdate(null)
           break
-        case 'tool_call':
+        case 'setToolCalled':
           setUpdate(`Executing tool: ${message.data.messages[0].tool.name} ${JSON.stringify(message.data.messages[0].tool.args)}`)
           break
-        case 'tool_use':
+        case 'setToolUsed':
           setUpdate(message.data.text)
           break
-        case 'working':
+        case 'setWorking':
           setUpdate("Working...")
           break
-        case 'clearState':
+        case 'clearMessages':
           clearMessageBoard()
           setUpdate(null)
           break

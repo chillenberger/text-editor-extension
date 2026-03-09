@@ -35,7 +35,7 @@ export class SpecialInstructionsHandler {
   updateSpecialInstruction(id: string, title?: string, content?: string) {
     const instruction = this._specialInstructions.find(i => i.id === id);
     if (!instruction) {
-      this._sendMessage({ type: "error", data: { text: "Instruction not found." } });
+      this._sendMessage({ command: "setError", data: { text: "Instruction not found." } });
       return;
     }
 
@@ -66,7 +66,7 @@ export class SpecialInstructionsHandler {
     if (id !== null) {
       const exists = this._specialInstructions.some(i => i.id === id);
       if (!exists) {
-        this._sendMessage({ type: "error", data: { text: "Instruction not found." } });
+        this._sendMessage({ command: "setError", data: { text: "Instruction not found." } });
         return;
       }
     }
@@ -88,7 +88,7 @@ export class SpecialInstructionsHandler {
 
   private _broadcastSpecialInstructions() {
     this._sendMessage({
-      type: "specialInstructionsUpdated",
+      command: "updatedSpecialInstructions",
       data: {
         specialInstructions: this.getSpecialInstructions(),
         activeSpecialInstructionId: this._activeSpecialInstructionId

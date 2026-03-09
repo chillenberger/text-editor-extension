@@ -10,11 +10,13 @@ import {
 import { getNonce, getUri, uriToFile, getActiveTabUri} from "../utilities.js";
 import { 
   WebviewPostCommand, 
+  WebviewPostCommandPostMessage,
   ExtensionPostCommand,
   UserState,
 } from "../type.js";
 import { SpecialInstructionsHandler } from "../handlers/specialInstructionsHandler.js";
 import { ChatHandler } from "../handlers/chatHandler.js";
+import { string } from "zod";
 
 export class CoDocView implements WebviewViewProvider {
   public static readonly viewType = "codocView";
@@ -114,8 +116,8 @@ export class CoDocView implements WebviewViewProvider {
               this.webViewReset();
               break;
 
-            case "chatMessage":
-              await this._onChatMessage(message?.text);
+            case "postMessage":
+              await this._onChatMessage(message.data?.content);
               break;
 
             case "createSpecialInstruction":
@@ -136,14 +138,14 @@ export class CoDocView implements WebviewViewProvider {
 
             default:
               this.sendMessage({
-                type: "error",
-                data: { text: `Unknown command: ${message.command}` }
+                command: "setError",
+                data: { text: `Unknown command: ${message}` }
               });
           }
         } catch (error) {
           const errorText =
             error instanceof Error ? error.message : "Unknown error";
-          this.sendMessage({ type: "error", data: { text: errorText } });
+          this.sendMessage({ command: "setError", data: { text: errorText } });
         }
       },
       undefined,
@@ -155,7 +157,7 @@ export class CoDocView implements WebviewViewProvider {
   private _onReady() {
     const uri = getActiveTabUri();
     this.sendMessage({
-      type: "initialize",
+      command: "initialize",
       data: {
         messages: [...this._chatHandler.getChatHistory()],
         specialInstructions: [...this._specialInstructionsHandler.getSpecialInstructions()],
@@ -166,8 +168,9 @@ export class CoDocView implements WebviewViewProvider {
   }
 
   private async _onChatMessage(message: string | undefined) {
+    const uri = getActiveTabUri(); 
     if (message) {
-      await this._chatHandler.handleChatMessage(message, this._specialInstructionsHandler.getActiveInstructionContent());
+      await this._chatHandler.handleChatMessage(message, this._specialInstructionsHandler.getActiveInstructionContent(), uri ? [uriToFile(uri).relativePath] : []);
     }
   }
 

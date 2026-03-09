@@ -1,8 +1,8 @@
 import { 
   PlanningRequest, 
   PlanningResponse, 
-  ToolCallMessage, 
-  ToolResultMessage, 
+  APICallToolRequest, 
+  ExtensionAPIUseToolResponse, 
   HumanMessage, 
   AssistantMessage,
   ExtensionPostCommand,
@@ -10,7 +10,7 @@ import {
   RequestModes,
   ResponseModes,
   RelativePath, 
-  toolResultMessageSchema,
+  extensionAPIUseToolResponseSchema,
   humanMessageSchema,
  } from "../type.js";
 import { ToolExecutor } from "./toolExecutor.js";
@@ -20,14 +20,14 @@ import * as z from 'zod';
 const PLANNING_API_URL = "http://localhost:8000/agent/invoke";
 
 interface InvokePlan {
-  messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+  messages: Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
   mode: RequestModes;
   specialInstructions?: string;
   referenceFiles?: Array<RelativePath>;
 }
 
 interface ExecutePlanningLoop {
-  messages: Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+  messages: Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
   specialInstructions?: string;
   referenceFiles?: Array<RelativePath>;
 }
@@ -70,19 +70,19 @@ export class PlanningService {
     }
   }
 
-  async executePlanningLoop({messages, specialInstructions, referenceFiles}: ExecutePlanningLoop): Promise<Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>> {
+  async executePlanningLoop({messages, specialInstructions, referenceFiles}: ExecutePlanningLoop): Promise<Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>> {
     let iterations = 0;
     const maxIterations = 10;
 
     let responseMode: ResponseModes | null = null;
     while (true) {
       try {
-        this._sendMessage({ type: "working", data: { text: `Working...` } });
+        this._sendMessage({ command: "setWorking", data: { text: `Working...` } });
 
         // For now 0 -> 1 planning cycles allowed. 
         const requestMode = !responseMode ? "auto" : "execute";
         const parsedResponse: PlanningResponse = await this.invokePlan({messages, mode: requestMode, specialInstructions, referenceFiles});
-        const output: ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage = parsedResponse.output.message;
+        const output: APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage = parsedResponse.output.message;
         responseMode = parsedResponse.output.mode;
         
         messages.push(output);
@@ -97,8 +97,8 @@ export class PlanningService {
           if ( output.type === "assistant") {
             // Assistant message is the final output of a request
             break;
-          } else if (output.type === "tool_call" && output.tool) {
-            this._sendMessage({ type: "tool_call", data: { messages: [output] } });
+          } else if (output.type === "call_tool" && output.tool) {
+            this._sendMessage({ command: "setToolCalled", data: { messages: [output] } });
 
             const message = await this._handleToolCall(output);
             messages.push(message);
@@ -115,20 +115,20 @@ export class PlanningService {
     }
 
     // Return final output message only
-    return messages.slice(messages.length - iterations - 1) as Array<ToolCallMessage | ToolResultMessage | HumanMessage | AssistantMessage>;
+    return messages.slice(messages.length - iterations - 1) as Array<APICallToolRequest | ExtensionAPIUseToolResponse | HumanMessage | AssistantMessage>;
   }
 
-  private async _handleToolCall(toolCall: ToolCallMessage): Promise<ToolResultMessage> {
+  private async _handleToolCall(toolCall: APICallToolRequest): Promise<ExtensionAPIUseToolResponse> {
     try {
       const result = await this.toolExecutor.execute({tool: toolCall.tool.name, arguments: toolCall.tool.args});
-      return toolResultMessageSchema.parse({
+      return extensionAPIUseToolResponseSchema.parse({
         content: result, 
         tool_call_id: toolCall.tool.id, 
         tool_name: toolCall.tool.name
       });
     } catch (error) {
       vscode.window.showErrorMessage(`Error executing tool ${toolCall.tool.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
-      return toolResultMessageSchema.parse(
+      return extensionAPIUseToolResponseSchema.parse(
         {
           content: "Error executing tool",
           tool_call_id: toolCall.tool.id,

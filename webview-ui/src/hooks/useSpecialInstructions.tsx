@@ -1,4 +1,11 @@
-import type { SpecialInstruction, ExtensionPostCommand } from "../../../src/type"
+import type { 
+  SpecialInstruction, 
+  ExtensionPostCommand, 
+  WebviewPostCommandSetActiveSpecialInstruction, 
+  WebviewPostCommandDeleteSpecialInstruction, 
+  WebviewPostCommandUpdateSpecialInstruction, 
+  WebviewPostCommandCreateSpecialInstruction,
+} from "../../../src/type"
 import { useEffect, useState } from "react"
 
 type ModalView = 'list' | 'edit';
@@ -64,12 +71,15 @@ export function useSpecialInstructions(): UseSpecialInstructions {
   }
 
   const saveInstruction = () => {
-    vscode.postMessage({
-      command: editingId ? "updateSpecialInstruction" : "createSpecialInstruction",
-      data: editingId
-        ? { id: editingId, title: editTitle, content: editContent }
-        : { title: editTitle, content: editContent }
-    })
+    const message: WebviewPostCommandCreateSpecialInstruction | WebviewPostCommandUpdateSpecialInstruction = editingId ? {
+          command: "updateSpecialInstruction",
+          data: { id: editingId, title: editTitle, content: editContent }
+        }
+      : {
+          command: "createSpecialInstruction",
+          data: { title: editTitle, content: editContent }
+        }
+    vscode.postMessage(message)
     setModalView('list')
     setEditingId(null)
     setEditTitle('')
@@ -84,38 +94,40 @@ export function useSpecialInstructions(): UseSpecialInstructions {
   }
 
   const deleteInstruction = (id: string) => {
-    vscode.postMessage({
+    const message: WebviewPostCommandDeleteSpecialInstruction = {
       command: "deleteSpecialInstruction",
       data: { id }
-    })
+    }
+    vscode.postMessage(message)
   }
 
   const selectInstruction = (id: string | null) => {
-    vscode.postMessage({
+    const message: WebviewPostCommandSetActiveSpecialInstruction = {
       command: "setActiveSpecialInstruction",
       data: { id }
-    })
+    }
+    vscode.postMessage(message)
   }
 
 
   useEffect(() => {
     const handleMessage = (event: globalThis.MessageEvent) => {
       const message: ExtensionPostCommand = event.data
-      switch (message.type) {
-        case 'initialize':
-          if (message.data.specialInstructions) {
+      switch (message.command) {
+        case "initialize":
+          if (message.data?.specialInstructions) {
             setSpecialInstructions(message.data.specialInstructions)
           }
-          if (message.data.activeSpecialInstructionId !== undefined) {
+          if (message.data?.activeSpecialInstructionId !== undefined) {
             setActiveInstructionId(message.data.activeSpecialInstructionId)
           }
           break
 
-        case 'specialInstructionsUpdated':
-          if (message.data.specialInstructions) {
+        case 'updatedSpecialInstructions':
+          if (message.data?.specialInstructions) {
             setSpecialInstructions(message.data.specialInstructions)
           }
-          if (message.data.activeSpecialInstructionId !== undefined) {
+          if (message.data?.activeSpecialInstructionId !== undefined) {
             setActiveInstructionId(message.data.activeSpecialInstructionId)
           }
           break

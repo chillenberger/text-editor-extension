@@ -73,7 +73,7 @@ export function resolveUri(path: string, workspaceFolders: readonly WorkspaceFol
   
   export function fileToMessage(file: File | null): ExtensionPostCommand {
       return {
-        type: "activeTabUpdate",
+        command: "setActiveTab",
         data: {
           activeTab: file,
         }
