@@ -1,5 +1,4 @@
-import { 
-  ExtensionPostCommand,
+import {
   UserState,
   SpecialInstruction
 } from "../type.js";

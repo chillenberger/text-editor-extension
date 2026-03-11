@@ -221,7 +221,7 @@ export class CoDocView implements WebviewViewProvider {
   }
 
   public webViewReset() {
-    this._chatHandler.resetConversation();
+    this._chatHandler.resetChatHistory();
   }
 
   public dispose() {
