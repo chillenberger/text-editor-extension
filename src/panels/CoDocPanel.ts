@@ -12,10 +12,12 @@ import {
   WebviewPostCommand,
   ExtensionPostCommand,
   UserState,
+  humanMessageSchema,
 } from "../type.js";
 import { SpecialInstructionsHandler } from "../handlers/specialInstructionsHandler.js";
 import { ChatHandler } from "../handlers/chatHandler.js";
 import WebviewComms from "../services/webviewComms.js";
+import { PlanningService } from "../services/planningService.js";
 
 export class CoDocView implements WebviewViewProvider {
   public static readonly viewType = "codocView";
@@ -24,6 +26,7 @@ export class CoDocView implements WebviewViewProvider {
   private _disposables: Disposable[] = [];
   private _chatHandler: ChatHandler;
   private _specialInstructionsHandler: SpecialInstructionsHandler;
+  private _planningService = new PlanningService();
 
   /* 
   * Initialize the View
@@ -169,9 +172,27 @@ export class CoDocView implements WebviewViewProvider {
   }
 
   private async _onChatMessage(message: string | undefined) {
-    const uri = getActiveTabUri(); 
-    if (message) {
-      await this._chatHandler.handleChatMessage(message, this._specialInstructionsHandler.getActiveInstructionContent(), uri ? [uriToFile(uri).relativePath] : []);
+    const uri = getActiveTabUri();
+    try {
+      if (message) {
+        const specialInstructionContent = this._specialInstructionsHandler.getActiveInstructionContent();
+        const referenceFiles = uri ? [uriToFile(uri).relativePath] : [];
+  
+        const humanMessage = humanMessageSchema.parse({ content: message });
+        this._chatHandler.appendToChatHistory([humanMessage]);
+  
+        const responses = await this._planningService.executePlanningLoop({
+          messages: [...this._chatHandler.getChatHistory()],
+          specialInstructions: specialInstructionContent,
+          referenceFiles,
+        });
+  
+        this._chatHandler.appendToChatHistory([...responses]);
+      }
+    } catch (error) {
+      const errorText =
+        error instanceof Error ? error.message : "Unknown error";
+      WebviewComms.postMessage({ command: "setError", data: { text: errorText } });
     }
   }
 

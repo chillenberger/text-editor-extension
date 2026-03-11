@@ -5,7 +5,6 @@ import {
   ExtensionAPIUseToolResponse, 
   HumanMessage, 
   AssistantMessage,
-  ExtensionPostCommand,
   PlanningResponseSchema,
   RequestModes,
   ResponseModes,
@@ -34,7 +33,7 @@ interface ExecutePlanningLoop {
 }
 
 export class PlanningService {
-  constructor(private toolExecutor: ToolExecutor) {}
+  private toolExecutor: ToolExecutor = new ToolExecutor();
 
   async invokePlan({messages, mode, specialInstructions, referenceFiles}: InvokePlan): Promise<PlanningResponse> {
     const body: PlanningRequest = {
