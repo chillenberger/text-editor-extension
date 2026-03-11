@@ -16,6 +16,7 @@ import {
 import { ToolExecutor } from "./toolExecutor.js";
 import * as vscode from 'vscode';
 import * as z from 'zod';
+import webviewComms from "./webviewComms.js";
 
 const PLANNING_API_URL = "http://localhost:8000/agent/invoke";
 
@@ -33,7 +34,6 @@ interface ExecutePlanningLoop {
 }
 
 export class PlanningService {
-  private webviewMessenger: (message: ExtensionPostCommand) => void = () => {};
   constructor(private toolExecutor: ToolExecutor) {}
 
   async invokePlan({messages, mode, specialInstructions, referenceFiles}: InvokePlan): Promise<PlanningResponse> {
@@ -77,7 +77,7 @@ export class PlanningService {
     let responseMode: ResponseModes | null = null;
     while (true) {
       try {
-        this._sendMessage({ command: "setWorking", data: { text: `Working...` } });
+        webviewComms.postMessage({ command: "setWorking", data: { text: `Working...` } });
 
         // For now 0 -> 1 planning cycles allowed. 
         const requestMode = !responseMode ? "auto" : "execute";
@@ -98,7 +98,7 @@ export class PlanningService {
             // Assistant message is the final output of a request
             break;
           } else if (output.type === "call_tool" && output.tool) {
-            this._sendMessage({ command: "setToolCalled", data: { messages: [output] } });
+            webviewComms.postMessage({ command: "setToolCalled", data: { messages: [output] } });
 
             const message = await this._handleToolCall(output);
             messages.push(message);
@@ -122,27 +122,23 @@ export class PlanningService {
     try {
       const result = await this.toolExecutor.execute({tool: toolCall.tool.name, arguments: toolCall.tool.args});
       return extensionAPIUseToolResponseSchema.parse({
-        content: result, 
-        tool_call_id: toolCall.tool.id, 
-        tool_name: toolCall.tool.name
+        content: result,
+        tool: {
+          id: toolCall.tool.id,
+          name: toolCall.tool.name
+        }
       });
     } catch (error) {
       vscode.window.showErrorMessage(`Error executing tool ${toolCall.tool.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
       return extensionAPIUseToolResponseSchema.parse(
         {
           content: "Error executing tool",
-          tool_call_id: toolCall.tool.id,
-          tool_name: toolCall.tool.name
+          tool: {
+            id: toolCall.tool.id,
+            name: toolCall.tool.name
+          }
         }
       );
     }
-  }
-
-  public setWebviewMessenger(messenger: (message: ExtensionPostCommand) => void) {
-    this.webviewMessenger = messenger;
-  }
-
-  private _sendMessage(message: ExtensionPostCommand) {
-    this.webviewMessenger(message);
   }
 }

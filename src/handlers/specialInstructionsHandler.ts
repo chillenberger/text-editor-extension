@@ -3,12 +3,13 @@ import {
   UserState,
   SpecialInstruction
 } from "../type.js";
+import webviewComms from "../services/webviewComms.js";
 
 export class SpecialInstructionsHandler {
   private _specialInstructions: SpecialInstruction[];
   private _activeSpecialInstructionId: string | null;
 
-  constructor(private _userState: UserState, private setUserState: (state: UserState) => void, private _sendMessage: (message: ExtensionPostCommand) => void) {
+  constructor(private _userState: UserState, private setUserState: (state: UserState) => void) {
     this._specialInstructions = _userState.specialInstructions ? [..._userState.specialInstructions] : [];
     this._activeSpecialInstructionId = _userState.activeSpecialInstructionId ?? null;
   }
@@ -35,7 +36,7 @@ export class SpecialInstructionsHandler {
   updateSpecialInstruction(id: string, title?: string, content?: string) {
     const instruction = this._specialInstructions.find(i => i.id === id);
     if (!instruction) {
-      this._sendMessage({ command: "setError", data: { text: "Instruction not found." } });
+      webviewComms.postMessage({ command: "setError", data: { text: "Instruction not found." } });
       return;
     }
 
@@ -66,7 +67,7 @@ export class SpecialInstructionsHandler {
     if (id !== null) {
       const exists = this._specialInstructions.some(i => i.id === id);
       if (!exists) {
-        this._sendMessage({ command: "setError", data: { text: "Instruction not found." } });
+        webviewComms.postMessage({ command: "setError", data: { text: "Instruction not found." } });
         return;
       }
     }
@@ -87,7 +88,7 @@ export class SpecialInstructionsHandler {
   }
 
   private _broadcastSpecialInstructions() {
-    this._sendMessage({
+    webviewComms.postMessage({
       command: "updatedSpecialInstructions",
       data: {
         specialInstructions: this.getSpecialInstructions(),

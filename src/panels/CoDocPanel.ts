@@ -9,19 +9,18 @@ import {
 } from "vscode";
 import { getNonce, getUri, uriToFile, getActiveTabUri} from "../utilities.js";
 import { 
-  WebviewPostCommand, 
-  WebviewPostCommandPostMessage,
+  WebviewPostCommand,
   ExtensionPostCommand,
   UserState,
 } from "../type.js";
 import { SpecialInstructionsHandler } from "../handlers/specialInstructionsHandler.js";
 import { ChatHandler } from "../handlers/chatHandler.js";
-import { string } from "zod";
+import WebviewComms from "../services/webviewComms.js";
 
 export class CoDocView implements WebviewViewProvider {
   public static readonly viewType = "codocView";
 
-  private _view?: WebviewView;
+  view?: WebviewView;
   private _disposables: Disposable[] = [];
   private _chatHandler: ChatHandler;
   private _specialInstructionsHandler: SpecialInstructionsHandler;
@@ -39,8 +38,8 @@ export class CoDocView implements WebviewViewProvider {
     private _setUserState: (newState: UserState) => void
   ) {
     // Initialize needed handlers
-    this._chatHandler = new ChatHandler(userState, this._setUserState, this.sendMessage.bind(this));
-    this._specialInstructionsHandler = new SpecialInstructionsHandler(userState, this._setUserState, this.sendMessage.bind(this));
+    this._chatHandler = new ChatHandler(userState, this._setUserState);
+    this._specialInstructionsHandler = new SpecialInstructionsHandler(userState, this._setUserState);
   }
 
   // Webview boilerplate to initialization and message handling setup
@@ -49,7 +48,9 @@ export class CoDocView implements WebviewViewProvider {
     _context: WebviewViewResolveContext,
     _token: CancellationToken
   ) {
-    this._view = webviewView;
+    this.view = webviewView;
+
+    WebviewComms.setWebview(webviewView);
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -137,7 +138,7 @@ export class CoDocView implements WebviewViewProvider {
               break;
 
             default:
-              this.sendMessage({
+              WebviewComms.postMessage({
                 command: "setError",
                 data: { text: `Unknown command: ${message}` }
               });
@@ -145,7 +146,7 @@ export class CoDocView implements WebviewViewProvider {
         } catch (error) {
           const errorText =
             error instanceof Error ? error.message : "Unknown error";
-          this.sendMessage({ command: "setError", data: { text: errorText } });
+          WebviewComms.postMessage({ command: "setError", data: { text: errorText } });
         }
       },
       undefined,
@@ -156,7 +157,7 @@ export class CoDocView implements WebviewViewProvider {
   // Initialize webview with persisted state
   private _onReady() {
     const uri = getActiveTabUri();
-    this.sendMessage({
+    WebviewComms.postMessage({
       command: "initialize",
       data: {
         messages: [...this._chatHandler.getChatHistory()],
@@ -200,13 +201,6 @@ export class CoDocView implements WebviewViewProvider {
 
   public webViewReset() {
     this._chatHandler.resetConversation();
-  }
-
-  // Send commands to webview
-  public sendMessage(message: ExtensionPostCommand) {
-    if (this._view) {
-      this._view.webview.postMessage(message);
-    }
   }
 
   public dispose() {

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { CoDocView } from './panels/CoDocPanel';
 import { UserState } from './type';
 import { fileToMessage, uriToFile, getActiveTabUri } from './utilities';
+import webviewComms from './services/webviewComms';
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -34,10 +35,12 @@ export function activate(context: vscode.ExtensionContext) {
 			if (uri) {
 					const file = uriToFile(uri);
 					const message = fileToMessage(file);
-					coDocProvider.sendMessage(message);
+					webviewComms.postMessage(message);
 			}
 		})
 	);
 }
 
-export function deactivate() {}
+export function deactivate() {
+	webviewComms.dispose();
+}

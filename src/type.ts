@@ -29,14 +29,18 @@ export const apiCallToolRequestSchema: z.ZodType<APICallToolRequest> = z.object(
 export interface ExtensionAPIUseToolResponse {
   type: "tool";
   content: string;
-  tool_call_id: string;
-  tool_name: string;
+  tool: {
+    name: string;
+    id: string;
+  }
 }
 export const extensionAPIUseToolResponseSchema: z.ZodType<ExtensionAPIUseToolResponse> = z.object({
   type: z.literal("tool").default("tool"),
   content: z.string(),
-  tool_call_id: z.string(),
-  tool_name: z.string()
+  tool: z.object({
+    name: z.string(),
+    id: z.string()
+  })
 })
 
 // A message from human 

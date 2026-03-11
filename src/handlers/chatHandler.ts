@@ -10,21 +10,19 @@ import {
 } from "../type.js";
 import { PlanningService } from "../services/planningService.js";
 import { ToolExecutor } from "../services/toolExecutor.js";
+import webviewComms from "../services/webviewComms.js";
 
 export class ChatHandler {
-
   private _conversationHistory: Array<HumanMessage | APICallToolRequest | ExtensionAPIUseToolResponse | AssistantMessage>;
   private planningService: PlanningService;
 
   constructor(
     private _userState: UserState, 
-    private _setUserState: (newState: UserState) => void, 
-    private _sendMessage: (message: ExtensionPostCommand) => void
+    private _setUserState: (newState: UserState) => void
   ) {
     this._conversationHistory = _userState.messageHistory ? [..._userState.messageHistory] : [];
 		const toolExecutor = new ToolExecutor();
     this.planningService = new PlanningService(toolExecutor);
-    this.planningService.setWebviewMessenger(this._sendMessage);
   }
 
   getChatHistory() {
@@ -37,7 +35,7 @@ export class ChatHandler {
       this._conversationHistory.push(newMessage);
 
       // Update UI with request immediately
-      this._sendMessage({ command: "postMessage", data: { messages: [newMessage] } });
+      webviewComms.postMessage({ command: "postMessage", data: { messages: [newMessage] } });
 
       // Always keep special instructions current
       const specialInstructions = activeSpecialInstructionContent || "";
@@ -53,7 +51,7 @@ export class ChatHandler {
       for (const msg of responses) {
         this._conversationHistory.push(msg);
         if (msg.type === "assistant") {
-          this._sendMessage({ command: "postMessage", data: { messages: [msg] } });
+          webviewComms.postMessage({ command: "postMessage", data: { messages: [msg] } });
         }
       }
 
@@ -62,12 +60,12 @@ export class ChatHandler {
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Unknown error";
-      this._sendMessage({ command: "setError", data: { text: errorText } });
+      webviewComms.postMessage({ command: "setError", data: { text: errorText } });
     }
   }
 
   resetConversation() {
-    this._sendMessage({ command: "clearMessages"});
+    webviewComms.postMessage({ command: "clearMessages"});
     this._conversationHistory = [];
     this._persistState();
   }
